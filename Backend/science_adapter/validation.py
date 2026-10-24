@@ -103,6 +103,7 @@ def inventory_hdf5(raw: Path, record: dict) -> dict:
     datasets: list[dict] = []
     groups: list[dict] = []
     links: list[dict] = []
+    named_datatypes: list[dict] = []
     evidence: list[dict] = []
     with h5py.File(raw, "r") as h5:
         if f"/science/LSAR/{family}" not in h5:
@@ -128,6 +129,15 @@ def inventory_hdf5(raw: Path, record: dict) -> dict:
                 item = group[name]
                 if isinstance(item, h5py.Group):
                     visit(item)
+                    continue
+                # Committed/named datatypes are valid HDF5 schema objects, not
+                # datasets.  NISAR GUNW products use them, so inventory them
+                # explicitly instead of accessing Dataset-only properties.
+                if isinstance(item, h5py.Datatype):
+                    named_datatypes.append({
+                        "path": path, "dtype": str(item.dtype),
+                        "attributes": {key: _scalar(value, h5) for key, value in item.attrs.items()},
+                    })
                     continue
                 if item.is_virtual or item.external:
                     raise ValidationError("Virtual/external HDF5 datasets require additional unretained files.")
@@ -172,7 +182,7 @@ def inventory_hdf5(raw: Path, record: dict) -> dict:
         "source": expected, "product_type": family, "bytes": raw.stat().st_size,
         "sha256": sha256_file(raw), "reference": _day(record["reference"]),
         "secondary": _day(record["secondary"]), "dataset_count": len(datasets),
-        "datasets": datasets, "groups": groups, "links": links,
+        "datasets": datasets, "groups": groups, "links": links, "named_datatypes": named_datatypes,
         "identity_evidence": evidence,
         "identity_limit": None if any(item["check"] == "exact_granule" for item in evidence)
         else "Exact identity uses the authenticated catalogue URL and filename; the HDF5 has no exact-granule identifier.",

@@ -10,7 +10,7 @@ import pytest
 from science_adapter import catalog
 from science_adapter.geometry import processing_fingerprint, validate_wkt
 from science_adapter.run_displacement import AdapterError, cleanup_after_verified_storage
-from science_adapter.validation import enforce_retention_aoi_mask
+from science_adapter.validation import enforce_retention_aoi_mask, inventory_hdf5
 
 
 WKT = "POLYGON((85 27, 85.01 27, 85 27.01, 85 27))"
@@ -72,6 +72,19 @@ def test_retained_raster_removes_values_outside_the_custom_polygon(tmp_path: Pat
         assert int(np.isfinite(data).sum()) == 1
         assert src.tags()["retention_aoi_mask_enforced"] == "true"
     assert receipt == {"status": "PASS", "removed_finite_values": 3, "valid_pixels": 1}
+
+
+def test_hdf5_inventory_records_named_datatypes_without_treating_them_as_datasets(tmp_path: Path) -> None:
+    import h5py
+    import numpy as np
+
+    raw = tmp_path / f"{NAME}.h5"
+    with h5py.File(raw, "w") as h5:
+        h5.require_group("science/LSAR/GUNW").create_dataset("unwrappedPhase", data=np.zeros((2, 2), dtype="float32"))
+        h5["committedStringType"] = h5py.string_dtype(encoding="utf-8")
+    result = inventory_hdf5(raw, {"granule": NAME, "productType": "GUNW", "reference": date(2026, 10, 1), "secondary": date(2026, 10, 13)})
+    assert result["status"] == "PASS"
+    assert result["named_datatypes"][0]["path"] == "/committedStringType"
 
 
 def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Path) -> None:
