@@ -430,12 +430,11 @@ def test_active_displacement_request_guard_migration_is_present() -> None:
     assert "where state in ('queued', 'dispatching', 'running')" in sql
 
 
-def test_displacement_workflow_initializes_runner_workspace_in_a_step() -> None:
+def test_displacement_workflow_preserves_account_callbacks_around_streaming_batch() -> None:
     workflow = (__import__("pathlib").Path(main_module.__file__).parents[2] / ".github" / "workflows" / "sarguardian-displacement.yml").read_text(encoding="utf-8")
-    assert "SARGUARDIAN_WORK_DIR: ${{ runner.temp }}" not in workflow
-    assert "Initialize isolated job workspace" in workflow
-    assert "${RUNNER_TEMP}/sarguardian-displacement-${JOB_ID}" in workflow
-    assert "EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}" in workflow
-    assert 'if [ -z "$EARTHDATA_TOKEN" ]; then' in workflow
-    assert "--report-progress" in workflow
-    assert "discovery-callback-ack" in workflow
+    assert "run-name: Displacement ${{ inputs.job_id }}" in workflow
+    assert "science_adapter.dynamic_callback" in workflow
+    assert "--stage products_discovered" not in workflow
+    assert "uses: ./.github/workflows/sarguardian-aoi-wkt-dashboard.yml" in workflow
+    assert "PROGRESS_REPORTED: ${{ needs.process-dynamic-aoi.outputs.progress_reported }}" in workflow
+    assert "--result-summary" in workflow

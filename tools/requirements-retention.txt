@@ -1,0 +1,5 @@
+h5py>=3.10
+numpy>=1.26
+requests>=2.31
+# Use the ASF client already pinned by the scientific source repository.
+asf_search==13.0.0

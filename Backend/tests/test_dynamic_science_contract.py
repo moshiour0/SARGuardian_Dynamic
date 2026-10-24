@@ -87,11 +87,20 @@ def test_hdf5_inventory_records_named_datatypes_without_treating_them_as_dataset
     assert result["named_datatypes"][0]["path"] == "/committedStringType"
 
 
-def test_workflow_manifest_checksum_step_imports_hashlib() -> None:
-    workflow = (Path(__file__).parents[2] / ".github" / "workflows" / "sarguardian-displacement.yml").read_text(encoding="utf-8")
-    validation_step = workflow.split("test -s \"$SARGUARDIAN_WORK_DIR/result-manifest.json\"", 1)[1].split("- name: Publish", 1)[0]
-    assert "import hashlib" in validation_step
-    assert "hashlib.sha256" in validation_step
+def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() -> None:
+    root = Path(__file__).parents[2]
+    workflow = (root / ".github" / "workflows" / "sarguardian-displacement.yml").read_text(encoding="utf-8")
+    dashboard = (root / ".github" / "workflows" / "sarguardian-aoi-wkt-dashboard.yml").read_text(encoding="utf-8")
+    worker = (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8")
+    assert "uses: ./.github/workflows/sarguardian-aoi-wkt-dashboard.yml" in workflow
+    assert "aoi_wkt: ${{ inputs.aoi_wkt }}" in workflow
+    assert "date_filter_mode: ${{ inputs.acquisition_window }}" in workflow
+    assert "python tools/discover_aoi_products.py" in dashboard
+    assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in dashboard
+    assert "python science-source/src/gunw_reader.py" in worker
+    assert "python science-source/src/goff_reader.py" in worker
+    assert "--aoi \"$AOI_NAME\"" in worker
+    assert "SCIENCE_COMMIT: 10639a916c9829850775410b3ed7de62e527770d" in worker
 
 
 def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Path) -> None:
