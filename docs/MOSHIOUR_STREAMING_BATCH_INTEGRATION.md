@@ -39,10 +39,13 @@ Those workflows and their processing tools are the integration source used here.
 - Existing `product_type` (`BOTH`, `GUNW`, `GOFF`) is applied during catalog
   discovery. Existing processing profile `full-aoi` maps to upstream
   `full-aoi-baseline`.
-- ASF catalog calls are bounded to two 30-second attempts. The pinned source
-  credential exchange receives a 20-second default timeout without replacing
-  its authentication logic. Exact file probes use two bounded attempts and the
-  upstream worker still performs one download per product attempt.
+- ASF catalog calls are bounded to two 30-second attempts. Username/password
+  authentication exchanges credentials for an EDL bearer token with a
+  20-second timeout and skips the unrelated `asf-urs` cookie flow, which can
+  reject valid NISAR L2 access. Exact file probes use two bounded attempts and
+  the upstream worker still performs one download per product attempt.
+- A download explicitly classified as non-retryable is terminal and is not
+  scheduled for the product-level retry pass.
 - Either `GOOGLE_DRIVE_PARENT_FOLDER_ID` (upstream name) or the existing
   `GOOGLE_DRIVE_FOLDER_ID` secret can provide the private retention root.
 

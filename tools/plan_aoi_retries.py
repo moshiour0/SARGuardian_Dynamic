@@ -34,10 +34,18 @@ def plan(manifest: dict[str, Any], product_root: Path, cleanup_root: Path) -> di
         cleanup_upload=read_json(cleanup/"drive-cleanup-upload-receipt.json")
         reasons=[]
         terminal_reason=None
+        download_diagnostics=(diagnostics or {}).get("download_diagnostics", [])
+        permanent_download_failure=(
+            outcomes.get("download") == "failure"
+            and isinstance(download_diagnostics, list)
+            and "DOWNLOAD_FAILURE_RETRYABLE=no" in download_diagnostics
+        )
         # Repeating a deterministic local failure with the same source bytes and
         # the same code revision cannot repair it. Retry only acquisition/retention
         # failures or missing checkpoints without a known terminal processing cause.
-        if (outcomes.get("download") == "success"
+        if permanent_download_failure:
+            terminal_reason="NON_RETRYABLE_DOWNLOAD_FAILURE"
+        elif (outcomes.get("download") == "success"
                 and outcomes.get("aoi_preflight") == "success"
                 and outcomes.get("reader") == "failure"):
             terminal_reason="NON_RETRYABLE_READER_FAILURE_AFTER_SUCCESSFUL_DOWNLOAD_AND_AOI_PREFLIGHT"

@@ -8,7 +8,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import plan_aoi_retries as planner
 
 
-def _inputs(tmp_path: Path, step_outcomes: dict[str, str], validation_status: str | None = None):
+def _inputs(tmp_path: Path, step_outcomes: dict[str, str], validation_status: str | None = None,
+            download_diagnostics: list[str] | None = None):
     product = {
         "id": "GOFF-001",
         "granule_name": "NISAR_L2_PR_GOFF_TEST_PRODUCT",
@@ -30,7 +31,8 @@ def _inputs(tmp_path: Path, step_outcomes: dict[str, str], validation_status: st
     cleanup_root = tmp_path / "cleanups"
     artifact = product_root / "sarguardian-granule-GOFF-001"
     artifact.mkdir(parents=True)
-    diagnostics = {"product_id": "GOFF-001", "step_outcomes": step_outcomes}
+    diagnostics = {"product_id": "GOFF-001", "step_outcomes": step_outcomes,
+                   "download_diagnostics": download_diagnostics or []}
     (artifact / "product-run-diagnostics.json").write_text(json.dumps(diagnostics), encoding="utf-8")
     if validation_status is not None:
         (artifact / "derived-output-validation.json").write_text(
@@ -67,6 +69,20 @@ def test_download_failure_remains_eligible_for_retry(tmp_path):
     assert result["retry_count"] == 1
     assert result["terminal_failure_count"] == 0
     assert result["decisions"][0]["status"] == "RETRY"
+
+
+def test_non_retryable_download_failure_is_terminal(tmp_path):
+    manifest, product_root, cleanup_root = _inputs(
+        tmp_path,
+        {"download": "failure", "aoi_preflight": "skipped", "reader": "skipped"},
+        download_diagnostics=["DOWNLOAD_FAILURE_RETRYABLE=no"],
+    )
+
+    result = planner.plan(manifest, product_root, cleanup_root)
+
+    assert result["retry_count"] == 0
+    assert result["terminal_failure_count"] == 1
+    assert result["decisions"][0]["terminal_reason"] == "NON_RETRYABLE_DOWNLOAD_FAILURE"
 
 
 def test_structural_validation_failure_after_successful_reader_is_terminal(tmp_path):

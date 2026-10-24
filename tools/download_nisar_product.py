@@ -201,7 +201,7 @@ def _sleep_before_retry(stage: str, attempt: int, detail: str) -> None:
 def build_authenticated_session_with_retry(
     acquisition: Any, attempts: int = 2, *, force_credentials: bool = False
 ) -> Any:
-    """Prefer a pre-generated Earthdata user token; otherwise retry credential exchange."""
+    """Build a bearer-authenticated ASF session without the unrelated cookie flow."""
     token = os.environ.get("EARTHDATA_TOKEN", "").strip()
     if token and not force_credentials:
         import asf_search
@@ -211,26 +211,62 @@ def build_authenticated_session_with_retry(
         # /api/users/find_or_create_token for each newly constructed session.
         return asf_search.ASFSession().auth_with_token(token)
 
-    print("EARTHDATA_AUTH_MODE=username_password_token_exchange", file=sys.stderr)
+    username = os.environ.get("EARTHDATA_USERNAME", "").strip()
+    password = os.environ.get("EARTHDATA_PASSWORD", "")
+    if not username or not password:
+        # Compatibility path for callers that provide a pre-authenticated
+        # pinned acquisition module (including offline validation tests).
+        print("EARTHDATA_AUTH_MODE=pinned_acquisition_session", file=sys.stderr)
+        for attempt in range(1, attempts + 1):
+            source_request = requests.sessions.Session.request
+
+            def bounded_request(session: Any, method: str, url: str, **kwargs: Any) -> Any:
+                kwargs.setdefault("timeout", (10, 20))
+                return source_request(session, method, url, **kwargs)
+
+            try:
+                requests.sessions.Session.request = bounded_request
+                return acquisition.build_session()
+            except requests.exceptions.RequestException as exc:
+                if attempt >= attempts or not is_retryable_remote_failure(exc):
+                    raise
+                _sleep_before_retry("earthdata_authentication", attempt, str(exc))
+            finally:
+                requests.sessions.Session.request = source_request
+        raise RuntimeError("EARTHDATA_AUTHENTICATION_RETRIES_EXHAUSTED")
+
+    import asf_search
+    from requests.auth import HTTPBasicAuth
+
+    print("EARTHDATA_AUTH_MODE=username_password_bearer_token_exchange", file=sys.stderr)
     for attempt in range(1, attempts + 1):
-        source_request = requests.sessions.Session.request
-
-        def bounded_request(session: Any, method: str, url: str, **kwargs: Any) -> Any:
-            kwargs.setdefault("timeout", (10, 20))
-            return source_request(session, method, url, **kwargs)
-
+        session = asf_search.ASFSession()
+        response = None
         try:
-            # The pinned source's credential exchange omits a timeout. Keep
-            # its authentication logic intact while bounding only requests
-            # that did not provide their own timeout.
-            requests.sessions.Session.request = bounded_request
-            return acquisition.build_session()
-        except requests.exceptions.RequestException as exc:
-            if attempt >= attempts:
+            # auth_with_creds() also requests an asf-urs cookie. That cookie is
+            # required for some ASF products, but not for these NISAR L2 HTTPS
+            # objects. The cookie exchange can return 401 even after EDL issued
+            # a valid user token, so perform the documented token request and
+            # install the resulting Bearer credential directly.
+            response = session.post(
+                f"https://{session.edl_host}/api/users/find_or_create_token",
+                auth=HTTPBasicAuth(username, password),
+                timeout=(10, 20),
+            )
+            response.raise_for_status()
+            payload = response.json()
+            access_token = payload.get("access_token") if isinstance(payload, dict) else None
+            if not isinstance(access_token, str) or not access_token:
+                raise RuntimeError("EARTHDATA_TOKEN_RESPONSE_INVALID")
+            session._update_edl_token(access_token)
+            return session
+        except (requests.exceptions.RequestException, ValueError) as exc:
+            if attempt >= attempts or not is_retryable_remote_failure(exc):
                 raise
             _sleep_before_retry("earthdata_authentication", attempt, str(exc))
         finally:
-            requests.sessions.Session.request = source_request
+            if response is not None:
+                response.close()
     raise RuntimeError("EARTHDATA_AUTHENTICATION_RETRIES_EXHAUSTED")
 
 

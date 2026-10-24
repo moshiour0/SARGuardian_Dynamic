@@ -395,6 +395,49 @@ def test_pre_generated_earthdata_user_token_bypasses_login_token_endpoint(monkey
     assert "EARTHDATA_AUTH_MODE=pre_generated_user_token" in capsys.readouterr().err
 
 
+def test_username_password_exchange_installs_bearer_without_asf_cookie(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    monkeypatch.delenv("EARTHDATA_TOKEN", raising=False)
+    monkeypatch.setenv("EARTHDATA_USERNAME", "user")
+    monkeypatch.setenv("EARTHDATA_PASSWORD", "password")
+    calls = []
+
+    class TokenResponse:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"access_token": "issued-user-token"}
+
+        def close(self):
+            calls.append("closed")
+
+    class FakeASFSession:
+        edl_host = "urs.earthdata.nasa.gov"
+
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs["timeout"]))
+            return TokenResponse()
+
+        def _update_edl_token(self, token):
+            calls.append(("token", token))
+
+    monkeypatch.setitem(
+        download.sys.modules,
+        "asf_search",
+        SimpleNamespace(ASFSession=FakeASFSession),
+    )
+
+    session = download.build_authenticated_session_with_retry(object())
+
+    assert isinstance(session, FakeASFSession)
+    assert calls[0] == ("https://urs.earthdata.nasa.gov/api/users/find_or_create_token", (10, 20))
+    assert ("token", "issued-user-token") in calls
+    assert "closed" in calls
+    assert "username_password_bearer_token_exchange" in capsys.readouterr().err
+
+
 def test_user_token_is_sufficient_without_username_password(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("EARTHDATA_TOKEN", "pre-generated-user-token")
     monkeypatch.delenv("EARTHDATA_USERNAME", raising=False)
@@ -423,23 +466,19 @@ def test_user_token_is_sufficient_without_username_password(monkeypatch, tmp_pat
 
 
 def test_rejected_user_token_falls_back_once_to_credentials(monkeypatch, capsys):
-    from types import SimpleNamespace
-
     monkeypatch.setenv("EARTHDATA_TOKEN", "expired-user-token")
     monkeypatch.setenv("EARTHDATA_USERNAME", "user")
     monkeypatch.setenv("EARTHDATA_PASSWORD", "password")
     token_session = FakeSession(head_response=FakeResponse(401, reason="Unauthorized"))
     credential_session = FakeSession(head_response=FakeResponse(200, {"Content-Length": "987654"}))
-
-    class FakeASFSession:
-        def auth_with_token(self, token):
-            assert token == "expired-user-token"
-            return token_session
-
-    monkeypatch.setitem(
-        download.sys.modules,
-        "asf_search",
-        SimpleNamespace(ASFSession=FakeASFSession),
+    auth_modes = []
+    monkeypatch.setattr(
+        download,
+        "build_authenticated_session_with_retry",
+        lambda _acquisition, force_credentials=False: (
+            auth_modes.append(force_credentials) or
+            (credential_session if force_credentials else token_session)
+        ),
     )
     acquisition = FakeSourceAcquisition(credential_session)
 
@@ -450,6 +489,7 @@ def test_rejected_user_token_falls_back_once_to_credentials(monkeypatch, capsys)
     assert returned_session is credential_session
     assert size == 987654
     assert record["granuleName"] == WANTED
+    assert auth_modes == [False, True]
     output = capsys.readouterr().err
     assert "EARTHDATA_USER_TOKEN_REJECTED=retrying_once_with_username_password_session" in output
 
