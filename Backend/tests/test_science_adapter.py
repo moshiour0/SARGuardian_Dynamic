@@ -176,7 +176,7 @@ def test_adapter_rejects_a_direct_workflow_request_outside_the_api_date_limit(tm
         adapter.run_job(adapter.JobInput(str(uuid4()), "POLYGON((85 27, 85.01 27, 85 27.01, 85 27))", date(2026, 1, 1), date(2026, 5, 1), source_root, tmp_path / "work", 1))
 
 
-def test_adapter_propagates_inputs_uses_science_reader_and_removes_raw_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_adapter_retains_raw_data_until_remote_storage_cleanup_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     source_root, work_dir = tmp_path / "science", tmp_path / "work"
     source_root.mkdir()
     seen: dict[str, object] = {}
@@ -202,13 +202,22 @@ def test_adapter_propagates_inputs_uses_science_reader_and_removes_raw_data(tmp_
             return {"export_status": "WRITTEN", "export_file": target.name, "export_valid_px": 9}
 
     monkeypatch.setattr(adapter, "_load_science_modules", lambda _root, wkt: (Acquisition(), Gunw(), SimpleNamespace()))
+    monkeypatch.setattr(adapter.catalog, "discover", lambda *_args, **_kwargs: {"selected": [record("2026-10-01", "2026-10-13")], "excluded": [], "complete": True})
+    monkeypatch.setattr(adapter, "inventory_hdf5", lambda raw, rec: {"sha256": adapter.sha256_file(raw), "bytes": raw.stat().st_size})
+    monkeypatch.setattr(adapter, "validate_raster", lambda *_args: {"status": "PASS"})
+    monkeypatch.setattr(adapter, "retain_quality_raster", lambda *_args: [])
+    def write_stats(_exports, _record, output):
+        target = output / "raster-statistics.csv"
+        target.write_text("source\nexample\n", encoding="utf-8")
+        return target
+    monkeypatch.setattr(adapter, "write_raster_summary", write_stats)
+    monkeypatch.setattr(adapter, "create_raster_preview", lambda source, output: source)
     job = adapter.JobInput(str(uuid4()), "POLYGON((85 27, 85.01 27, 85 27.01, 85 27))", date(2026, 10, 1), date(2026, 10, 22), source_root, work_dir, 1)
     manifest = adapter.run_job(job)
-    assert seen["dates"] == ("2026-10-01", "2026-10-22")
     assert seen["reader"][1]["auto_ref"] is True
     assert manifest["analysis_type"] == "aoi_clipped_per_product_displacement_screening"
     assert manifest["validated_outputs"]
-    assert not list((source_root / "data" / "nisar_l2" / "_incoming").glob("*.h5"))
+    assert list((source_root / "data" / "nisar_l2" / "_incoming").glob("*.h5"))
     assert (work_dir / "result-manifest.json").is_file()
 
 
@@ -229,6 +238,8 @@ def test_adapter_fails_when_a_real_reader_returns_no_valid_science_pixels(tmp_pa
         def export_clipped(self, _result, _output): return {"export_status": "NO_VALID_PIXELS"}
 
     monkeypatch.setattr(adapter, "_load_science_modules", lambda *_args: (Acquisition(), Gunw(), SimpleNamespace()))
+    monkeypatch.setattr(adapter.catalog, "discover", lambda *_args, **_kwargs: {"selected": [record("2026-10-01", "2026-10-13")], "excluded": [], "complete": True})
+    monkeypatch.setattr(adapter, "inventory_hdf5", lambda raw, rec: {"sha256": adapter.sha256_file(raw), "bytes": raw.stat().st_size})
     job = adapter.JobInput(str(uuid4()), "POLYGON((85 27, 85.01 27, 85 27.01, 85 27))", date(2026, 10, 1), date(2026, 10, 22), source_root, work_dir, 1)
     with pytest.raises(adapter.AdapterError, match="none contained valid AOI science pixels"):
         adapter.run_job(job)

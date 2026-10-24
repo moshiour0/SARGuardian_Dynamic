@@ -13,6 +13,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from science_adapter.geometry import processing_fingerprint, validate_wkt
+
 from .config import RuntimeSettings
 from .jobs import JobState
 
@@ -22,29 +24,30 @@ class CreateDisplacementJobRequest(BaseModel):
     start_date: date
     end_date: date
     idempotency_key: str = Field(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    product_type: Literal["BOTH", "GUNW", "GOFF"] = "BOTH"
+    acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
+    retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
+    processing_profile: Literal["validation-pilot", "full-aoi"] = "validation-pilot"
 
     @field_validator("aoi_wkt")
     @classmethod
     def require_single_ring_wgs84_polygon(cls, value: str) -> str:
-        text = value.strip()
-        match = re.fullmatch(r"(?is)POLYGON\s*\(\s*\((.*?)\)\s*\)", text)
-        if not match or re.search(r"\)\s*,\s*\(", match.group(1)):
-            raise ValueError("AOI must be a single-ring WGS84 POLYGON.")
-        points: list[tuple[float, float]] = []
-        for item in match.group(1).split(","):
-            parts = item.split()
-            if len(parts) != 2:
-                raise ValueError("AOI coordinates must be longitude/latitude pairs.")
-            try:
-                lon, lat = float(parts[0]), float(parts[1])
-            except ValueError:
-                raise ValueError("AOI coordinates must be numeric.") from None
-            if not -180 <= lon <= 180 or not -90 <= lat <= 90:
-                raise ValueError("AOI coordinates must be WGS84 longitude/latitude values.")
-            points.append((lon, lat))
-        if len(set(points[:-1] if points and points[0] == points[-1] else points)) < 3:
-            raise ValueError("AOI needs at least three distinct vertices.")
-        return text
+        validate_wkt(value)
+        # Keep the original accepted text for backwards-compatible result records.
+        return value.strip()
+
+
+PROCESSING_OPTION_DEFAULTS = {
+    "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
+    "retention_mode": "derived-only", "processing_profile": "validation-pilot",
+}
+
+
+def request_fingerprint(record: dict[str, Any]) -> str:
+    return processing_fingerprint(
+        aoi_wkt=record["aoi_wkt"], start_date=str(record["start_date"]), end_date=str(record["end_date"]),
+        **{name: record.get(name, default) for name, default in PROCESSING_OPTION_DEFAULTS.items()},
+    )
 
 
 class DisplacementJobResponse(BaseModel):
@@ -53,6 +56,10 @@ class DisplacementJobResponse(BaseModel):
     aoi_wkt: str
     start_date: date
     end_date: date
+    product_type: Literal["BOTH", "GUNW", "GOFF"] = "BOTH"
+    acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
+    retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
+    processing_profile: Literal["validation-pilot", "full-aoi"] = "validation-pilot"
     stage: str
     github_run_id: str | None = None
     github_run_url: str | None = None
@@ -74,6 +81,9 @@ class WorkerCallback(BaseModel):
     error_message: str | None = Field(default=None, max_length=500)
     result_summary: dict[str, Any] | None = None
     artifact_url: str | None = Field(default=None, max_length=2_048)
+    job_id: UUID | None = None
+    contract_version: Literal[1, 2] = 1
+    request_fingerprint: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class ResubmitDisplacementJobRequest(BaseModel):
@@ -99,6 +109,7 @@ def dispatch_workflow(settings: RuntimeSettings, job_id: UUID, request: CreateDi
         "job_id": str(job_id), "aoi_wkt": request.aoi_wkt,
         "start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(),
         "callback_url": settings.public_api_url,
+        **{name: getattr(request, name) for name in PROCESSING_OPTION_DEFAULTS},
     }}).encode("utf-8")
     request_obj = Request(endpoint, data=body, method="POST", headers={
         "Accept": "application/vnd.github+json", "Authorization": f"Bearer {settings.github_actions_token}",

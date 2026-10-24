@@ -28,12 +28,15 @@ The existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, Firebase service-accou
 - `GOOGLE_DRIVE_FOLDER_ID`: the parent folder for per-job result folders.
 
 After scientific validation, the runner creates one folder named with the durable job
-UUID, uploads only `result-manifest.json` and its checksum-verified outputs, then sets
-that job folder to **Anyone with the link: Viewer**. It never uploads raw NISAR HDF5
-source files. If Drive authentication, upload, or link-sharing fails, the workflow is
-failed and no successful result callback is sent.
-The workflow runs the version-controlled `Backend/science_adapter/run_displacement.py` adapter. It pins `moshiour0/SARGuardian` at `10639a916c9829850775410b3ed7de62e527770d`, reuses its WKT parser, ASF acquisition path, GUNW/GOFF readers, AOI masks, quality gates and exports, and does not use `SARGuardian-backend` as a scientific source. Products are selected by an in-window **secondary acquisition** date; their reference acquisition can predate the selected start date. The manifest records this policy explicitly.
+UUID and uploads only `result-manifest.json` and checksum-verified outputs. New result
+folders must be private: the existing API verifies Firebase ownership and streams a
+requested artifact only after rechecking its retained SHA-256 and byte count. Existing
+historical links remain available for backwards compatibility, but no new anyone-link
+permission is created. It never uploads raw NISAR HDF5 in `derived-only` mode. If Drive
+authentication, upload, privacy verification, or remote byte verification fails, the
+workflow fails and raw cleanup is blocked.
+The workflow runs the version-controlled `Backend/science_adapter/run_displacement.py` adapter. It pins `moshiour0/SARGuardian` at `10639a916c9829850775410b3ed7de62e527770d`, uses exact WKT only, queries ASF separately by family and BETA/PROVISIONAL maturity, and retains catalog/identity evidence. The default policy selects pairs by an in-window **secondary acquisition** date; an optional strict mode requires both dates in the window. The manifest records the policy, selected and excluded variants, source hashes, structural validation and cleanup receipts.
 
-Before reporting success, the workflow requires a JSON manifest with the dispatched job ID, exact WKT hash/date window/source repository/ref, and checksummed `validated_outputs` entirely inside the isolated job directory. A zero process exit code is insufficient. The supported result is explicitly AOI-clipped, per-product GUNW/GOFF displacement screening; it is not an arbitrary-AOI time-series or hazard forecast. Callbacks have signed, ordered sequence numbers; GitHub terminal success without the signed completion callback is recorded as failure, never as science success.
+Before reporting success, the workflow requires a version-2 JSON manifest with the dispatched job ID, canonical WKT/options fingerprint, exact dates/source repository/ref, checksummed outputs, validation reports, private Drive IDs and remote receipts. Raw files are deleted only after those receipts pass; `full-lossless` retains a byte-identical HDF5 archive. A zero process exit code is insufficient. The supported result is explicitly AOI-clipped, per-product GUNW/GOFF displacement screening; it is not an arbitrary-AOI time-series or hazard forecast. Named-AOI candidate screening and dynamic-AOI inversion return explicit skipped/insufficient-evidence states. Callbacks have signed, ordered sequence numbers and bind job ID plus request fingerprint; GitHub terminal success without the signed completion callback is recorded as failure, never as science success.
 
 Run [002_displacement_jobs.sql](../Backend/migrations/002_displacement_jobs.sql) after the prior processing-job migration. Keep direct browser access revoked; the trusted backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.

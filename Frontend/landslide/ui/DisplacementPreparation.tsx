@@ -6,8 +6,11 @@ import {
   getDisplacementJob,
   listDisplacementJobs,
   resubmitDisplacementJob,
+  DEFAULT_DISPLACEMENT_OPTIONS,
+  type DisplacementProcessingOptions,
   type DisplacementJob,
 } from '../../src/api/catalog';
+import { ScientificResults } from './ScientificResults';
 
 const activeStates = new Set(['queued', 'dispatching', 'running']);
 const noopTaskActivityChange = () => {};
@@ -19,11 +22,15 @@ function elapsed(createdAt: string, updatedAt: string, state: DisplacementJob['s
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestigation) {
+function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestigation, options: DisplacementProcessingOptions) {
   const matching = preparation.valid
     ? jobs.filter((candidate) => candidate.aoi_wkt === preparation.payload.aoi_wkt
       && candidate.start_date === preparation.payload.start_date
-      && candidate.end_date === preparation.payload.end_date)
+      && candidate.end_date === preparation.payload.end_date
+      && (candidate.product_type || 'BOTH') === options.product_type
+      && (candidate.acquisition_window || 'secondary-acquisition-in-window') === options.acquisition_window
+      && (candidate.retention_mode || 'derived-only') === options.retention_mode
+      && (candidate.processing_profile || 'full-aoi') === options.processing_profile)
     : [];
   // The API returns newest-first. Once no task is running, reopen the newest
   // matching job (or newest account job) so an older successful result can
@@ -35,7 +42,7 @@ function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestig
     || null;
 }
 
-export function DisplacementPreparation({ preparation, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
+export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<DisplacementJob | null>(null);
   const [jobError, setJobError] = useState('');
@@ -49,13 +56,13 @@ export function DisplacementPreparation({ preparation, onBack, onTaskActivityCha
     setJobError('');
     try {
       const jobs = await listDisplacementJobs(user);
-      setJob((current) => current && activeStates.has(current.state) ? current : chooseAccountJob(jobs, preparation));
+      setJob((current) => current && activeStates.has(current.state) ? current : chooseAccountJob(jobs, preparation, options));
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not load your displacement jobs.');
     } finally {
       setAccountLoaded(true);
     }
-  }, [preparation, user]);
+  }, [options, preparation, user]);
 
   // Browser refresh and reopening this route only read durable account state.
   useEffect(() => { void loadAccountJob(); }, [loadAccountJob]);
@@ -158,7 +165,7 @@ export function DisplacementPreparation({ preparation, onBack, onTaskActivityCha
           <button type="button" className="investigate-button" disabled={busy} onClick={() => setShowResubmitConfirmation(true)}>Refresh task</button>
         </div>}
         {job.state === 'failed' && <button type="button" className="investigate-button" disabled={busy} onClick={() => void retryFailed()}>{busy ? 'Retrying…' : 'Retry task'}</button>}
-        {job.state === 'succeeded' && job.artifact_url && <p><a className="investigate-button validated-output-link" href={job.artifact_url} target="_blank" rel="noreferrer">Open validated output</a></p>}
+        <ScientificResults job={job} user={user} />
       </section>}
 
       {showResubmitConfirmation && job && <section className="displacement-resubmit-dialog" role="dialog" aria-modal="true" aria-labelledby="resubmit-title">

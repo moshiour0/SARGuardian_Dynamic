@@ -60,6 +60,8 @@ obtaining staging values. The current code expects these names:
 - `ASF_CATALOG_ENABLED`, `ASF_SEARCH_URL`, `ASF_MAX_RESULTS`, and `ASF_TIMEOUT_SECONDS`
 - `CORS_ORIGINS` (comma-separated origins; required in production)
 - `PREFLIGHT_TTL_SECONDS` (60 through 604800 seconds)
+- `DISPLACEMENT_ACTIONS_ENABLED`, `GITHUB_ACTIONS_TOKEN`, `GITHUB_ACTIONS_REPOSITORY`, `GITHUB_ACTIONS_WORKFLOW`, `GITHUB_ACTIONS_REF`, `DISPLACEMENT_CALLBACK_SECRET`, and `PUBLIC_API_URL` for durable scientific-processing dispatch
+- Runner-only GitHub secrets: `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` or `EARTHDATA_TOKEN`, `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and `GOOGLE_DRIVE_FOLDER_ID`
 - `PORT` (optional; defaults to 8000)
 
 Manual setup:
@@ -94,7 +96,7 @@ or long-running process is required. Set `APP_ENV=production` and an explicit tr
 comma-separated `CORS_ORIGINS` value containing the final Vercel frontend origin. Also set
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `FIREBASE_SERVICE_ACCOUNT_JSON` in Vercel's
 server-side environment settings. Do not set `GOOGLE_APPLICATION_CREDENTIALS` to a Windows
-path on Vercel. Keep Supabase migrations and worker dispatch as later phases.
+path on Vercel. Apply migrations in order through `004_scientific_request_contract.sql` before enabling dispatch. The Actions worker retains private, verified results and reports them through the existing owner-scoped displacement API; see [`../docs/DISPLACEMENT_ACTIONS.md`](../docs/DISPLACEMENT_ACTIONS.md) and [`../docs/CONTROLLED_LIVE_PILOT.md`](../docs/CONTROLLED_LIVE_PILOT.md).
 
 For the frontend project, use the Vite preset, root directory `Frontend/`, build command
 `npm run build`, and output directory `dist`. Set the public frontend variables documented in
@@ -135,9 +137,10 @@ AOI limit, date order, the 90-day limit, and `GUNW`/`GOFF` product types before 
 is called. Results preserve actual ASF granule names, product types, dates, direction, path,
 processing level, and size metadata where ASF provides them. Missing metadata remains absent.
 
-Job creation requires a current successful `preflight_id`, `confirm: true`, and a caller-owned
-idempotency key. It stores immutable request and manifest snapshots and starts in `queued`
-state. This milestone does not dispatch a worker or transition jobs to `dispatching`/`running`.
+`POST /api/displacement-jobs` creates an authenticated durable processing request. It stores
+an immutable AOI/date/product/window/retention/profile snapshot, dispatches only when
+server-side Actions settings are enabled, and accepts completion only from the bound signed
+worker callback. Normal catalog preflight remains metadata-only.
 
 ## Tests
 

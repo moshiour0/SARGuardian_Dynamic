@@ -1,4 +1,4 @@
-import type { CatalogProduct, CatalogResponse } from '../../src/api/catalog';
+import { DEFAULT_DISPLACEMENT_OPTIONS, type CatalogProduct, type CatalogResponse, type DisplacementProcessingOptions } from '../../src/api/catalog';
 import type { Coordinate, LocationSelection } from '../engine/types';
 
 const STORAGE_KEY_PREFIX = 'sarguardian.landslide.session.v1';
@@ -14,6 +14,7 @@ export type LandslideSessionState = {
   windowEnd: string;
   catalogResult: CatalogResponse | null;
   selectedHarmonyProduct: CatalogProduct | null;
+  processingOptions: DisplacementProcessingOptions;
 };
 
 function emptyState(): LandslideSessionState {
@@ -28,6 +29,7 @@ function emptyState(): LandslideSessionState {
     windowEnd: '',
     catalogResult: null,
     selectedHarmonyProduct: null,
+    processingOptions: { ...DEFAULT_DISPLACEMENT_OPTIONS },
   };
 }
 
@@ -122,6 +124,13 @@ export function loadLandslideSessionState(uid: string): LandslideSessionState {
     const selectedHarmonyProduct = parsed.selectedHarmonyProduct === null || parsed.selectedHarmonyProduct === undefined
       ? null
       : isCatalogProduct(parsed.selectedHarmonyProduct) ? parsed.selectedHarmonyProduct : null;
+    const storedOptions = isRecord(parsed.processingOptions) ? parsed.processingOptions : {};
+    const processingOptions: DisplacementProcessingOptions = {
+      product_type: storedOptions.product_type === 'GUNW' || storedOptions.product_type === 'GOFF' ? storedOptions.product_type : 'BOTH',
+      acquisition_window: storedOptions.acquisition_window === 'both-acquisitions-in-window' ? storedOptions.acquisition_window : 'secondary-acquisition-in-window',
+      retention_mode: storedOptions.retention_mode === 'full-lossless' ? storedOptions.retention_mode : 'derived-only',
+      processing_profile: storedOptions.processing_profile === 'full-aoi' ? storedOptions.processing_profile : 'validation-pilot',
+    };
 
     return {
       searchText: typeof parsed.searchText === 'string' ? parsed.searchText : fallback.searchText,
@@ -135,6 +144,7 @@ export function loadLandslideSessionState(uid: string): LandslideSessionState {
       windowStart: isDate(parsed.windowStart) ? parsed.windowStart : fallback.windowStart,
       windowEnd: isDate(parsed.windowEnd) ? parsed.windowEnd : fallback.windowEnd,
       catalogResult,
+      processingOptions,
       selectedHarmonyProduct: selectedHarmonyProduct && catalogResult
         ? catalogResult.products.find((product) => product.granule_name === selectedHarmonyProduct.granule_name) ?? null
         : null,
@@ -146,8 +156,8 @@ export function loadLandslideSessionState(uid: string): LandslideSessionState {
 
 export function persistLandslideSessionState(uid: string, state: LandslideSessionState): void {
   try {
-    const { searchText, searchState, location, coordinates, areaClosed, drawing, windowStart, windowEnd, catalogResult, selectedHarmonyProduct } = state;
-    window.sessionStorage.setItem(storageKey(uid), JSON.stringify({ searchText, searchState, location, coordinates, areaClosed, drawing, windowStart, windowEnd, catalogResult, selectedHarmonyProduct }));
+    const { searchText, searchState, location, coordinates, areaClosed, drawing, windowStart, windowEnd, catalogResult, selectedHarmonyProduct, processingOptions } = state;
+    window.sessionStorage.setItem(storageKey(uid), JSON.stringify({ searchText, searchState, location, coordinates, areaClosed, drawing, windowStart, windowEnd, catalogResult, selectedHarmonyProduct, processingOptions }));
   } catch {
     // Session storage is optional; the mounted LandslidePage remains the primary route state.
   }

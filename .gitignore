@@ -1,0 +1,6 @@
+.integration-reference/
+.test-results/
+.pytest_cache/
+.test-temp*/
+**/pytest-cache-files-*/
+**/__pycache__/

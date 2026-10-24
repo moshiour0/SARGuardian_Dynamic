@@ -30,6 +30,8 @@ class DisplacementStore:
     def create_displacement_job(self, values):
         now = datetime.now(UTC).isoformat()
         self.row = values | {"id": str(uuid4()), "created_at": now, "updated_at": now, "github_run_id": None, "github_run_url": None, "callback_sequence": 0, "error_code": None, "error_message": None}
+        # Existing callback tests remain an explicit v1 compatibility fixture.
+        self.row["worker_contract_version"] = None
         self.rows.append(self.row)
         return self.row
 
@@ -39,7 +41,10 @@ class DisplacementStore:
     def find_active_displacement_job(self, owner, aoi_wkt, start_date, end_date):
         return next((row for row in reversed(self.rows) if row["owner_uid"] == owner and row["aoi_wkt"] == aoi_wkt and row["start_date"] == start_date and row["end_date"] == end_date and row["state"] in {"queued", "dispatching", "running"}), None)
 
-    def update_displacement_job(self, job_id, values):
+    def list_active_displacement_jobs(self, owner):
+        return [row for row in self.rows if row["owner_uid"] == owner and row["state"] in {"queued", "dispatching", "running"}]
+
+    def update_displacement_job(self, job_id, values, **_expected):
         row = next(row for row in self.rows if row["id"] == str(job_id))
         row |= values
         self.row = row
@@ -210,6 +215,49 @@ def test_ordered_worker_callbacks_preserve_stage_and_validated_result_summary(mo
     assert store.row["result_summary"]["selected_product_count"] == 1
 
 
+def test_version_two_callback_requires_bound_fingerprint_and_private_storage_evidence(monkeypatch) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    created = api.post("/api/displacement-jobs", json=payload()).json()
+    assert store.row
+    store.row["worker_contract_version"] = 2
+    store.row["request_fingerprint"] = main_module.displacement_request_fingerprint(store.row)
+    monkeypatch.setattr(main_module, "get_settings", lambda: type("Settings", (), {"displacement_callback_secret": "test-secret"})())
+
+    def callback(value: dict):
+        body = json.dumps(value).encode()
+        signature = "sha256=" + hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+        return api.post(f"/api/displacement-jobs/{created['id']}/callback", content=body, headers={"Content-Type": "application/json", "X-SARGuardian-Signature": signature})
+
+    common = {"github_run_id": "123", "job_id": created["id"], "contract_version": 2, "request_fingerprint": store.row["request_fingerprint"]}
+    assert callback(common | {"state": "running", "sequence": 1, "stage": "initializing"}).status_code == 200
+    missing_evidence = callback(common | {"state": "succeeded", "sequence": 2, "stage": "completed", "result_summary": {"schema_version": 2, "validation": {"status": "PASS"}, "artifacts": []}})
+    assert missing_evidence.status_code == 409
+    artifact = {"path": "outputs/result.tif", "kind": "aoi_clipped_geotiff", "bytes": 1,
+                "sha256": "a" * 64, "drive_file_id": "abcdefghijk"}
+    accepted = callback(common | {"state": "succeeded", "sequence": 2, "stage": "completed", "result_summary": {"schema_version": 2, "validation": {"status": "PASS"}, "storage_verification": {"status": "PASS"}, "artifacts": [artifact]}})
+    assert accepted.status_code == 200
+
+
+def test_private_artifact_download_requires_owner_and_rechecks_hash(monkeypatch) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    created = api.post("/api/displacement-jobs", json=payload()).json()
+    data = b"verified scientific bytes"
+    assert store.row
+    store.row.update({"state": "succeeded", "result_summary": {
+        "schema_version": 2, "validation": {"status": "PASS"}, "storage_verification": {"status": "PASS"},
+        "artifacts": [{"path": "outputs/example.tif", "kind": "aoi_clipped_geotiff", "bytes": len(data),
+                       "sha256": hashlib.sha256(data).hexdigest(), "drive_file_id": "abcdefghijk"}],
+    }})
+    monkeypatch.setattr(main_module, "download_private_result", lambda _id: ({"bytes": len(data)}, data))
+    response = api.get(f"/api/displacement-jobs/{created['id']}/artifacts/0")
+    assert response.status_code == 200
+    assert response.content == data
+    monkeypatch.setattr(main_module, "download_private_result", lambda _id: ({"bytes": 4}, b"bad!"))
+    assert api.get(f"/api/displacement-jobs/{created['id']}/artifacts/0").status_code == 409
+
+
 def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
     captured: dict = {}
 
@@ -239,6 +287,8 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
     assert captured["body"]["inputs"] == {
         "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
         "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
+        "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
+        "retention_mode": "derived-only", "processing_profile": "validation-pilot",
     }
 
 

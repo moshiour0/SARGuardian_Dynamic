@@ -25,6 +25,10 @@ class PersistenceError(RuntimeError):
     pass
 
 
+class PersistenceConflictError(PersistenceError):
+    """An atomic job update lost a race to another lifecycle event."""
+
+
 class PreflightNotFoundError(PersistenceError):
     pass
 
@@ -63,10 +67,11 @@ class JobStore(Protocol):
     def get_displacement_job_by_idempotency(self, owner_uid: str, idempotency_key: str) -> dict[str, Any] | None: ...
     def create_displacement_job(self, values: dict[str, Any]) -> dict[str, Any]: ...
     def list_displacement_jobs(self, owner_uid: str, limit: int = 20) -> list[dict[str, Any]]: ...
+    def list_active_displacement_jobs(self, owner_uid: str) -> list[dict[str, Any]]: ...
     def find_active_displacement_job(self, owner_uid: str, aoi_wkt: str, start_date: str, end_date: str) -> dict[str, Any] | None: ...
     def get_displacement_job(self, owner_uid: str, job_id: UUID) -> dict[str, Any] | None: ...
     def get_displacement_job_unscoped(self, job_id: UUID) -> dict[str, Any] | None: ...
-    def update_displacement_job(self, job_id: UUID, values: dict[str, Any]) -> dict[str, Any]: ...
+    def update_displacement_job(self, job_id: UUID, values: dict[str, Any], *, expected_state: str | None = None, expected_sequence: int | None = None) -> dict[str, Any]: ...
 
 
 def request_fingerprint(request_snapshot: dict[str, Any], manifest_snapshot: dict[str, Any]) -> str:
@@ -236,6 +241,14 @@ class SupabaseJobStore:
         rows = self._data(response)
         return rows[0] if rows else None
 
+    def list_active_displacement_jobs(self, owner_uid: str) -> list[dict[str, Any]]:
+        try:
+            response = (self.client.table("displacement_jobs").select("*").eq("owner_uid", owner_uid)
+                        .in_("state", ["queued", "dispatching", "running"]).limit(2).execute())
+        except Exception:
+            raise PersistenceError("Could not check account processing capacity.") from None
+        return self._data(response)
+
     def get_displacement_job(self, owner_uid: str, job_id: UUID) -> dict[str, Any] | None:
         try:
             response = self.client.table("displacement_jobs").select("*").eq("owner_uid", owner_uid).eq("id", str(job_id)).limit(1).execute()
@@ -252,13 +265,20 @@ class SupabaseJobStore:
         rows = self._data(response)
         return rows[0] if rows else None
 
-    def update_displacement_job(self, job_id: UUID, values: dict[str, Any]) -> dict[str, Any]:
+    def update_displacement_job(self, job_id: UUID, values: dict[str, Any], *, expected_state: str | None = None, expected_sequence: int | None = None) -> dict[str, Any]:
         try:
-            response = self.client.table("displacement_jobs").update(values).eq("id", str(job_id)).select("*").execute()
+            query = self.client.table("displacement_jobs").update(values).eq("id", str(job_id))
+            if expected_state is not None:
+                query = query.eq("state", expected_state)
+            if expected_sequence is not None:
+                query = query.eq("callback_sequence", expected_sequence)
+            response = query.select("*").execute()
         except Exception:
             raise PersistenceError("Could not update the displacement job.") from None
         rows = self._data(response)
         if not rows:
+            if expected_state is not None or expected_sequence is not None:
+                raise PersistenceConflictError("Job state changed concurrently; refresh before retrying.")
             raise PersistenceError("Displacement job was not found for update.")
         return rows[0]
 

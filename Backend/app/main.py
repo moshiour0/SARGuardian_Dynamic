@@ -9,13 +9,14 @@ from uuid import UUID, uuid4
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .asf_catalog import ASFAdapterError, ASFAdapterNotConfigured, normalize_product_rows, search_asf_catalog
 from .auth import get_current_user
 from .config import SettingsError, get_settings, validate_production_settings
 from .jobs import CreateJobRequest, JobResponse, JobState
 from .displacements import (
+    PROCESSING_OPTION_DEFAULTS,
     CreateDisplacementJobRequest,
     DisplacementJobResponse,
     GitHubCancellationError,
@@ -27,14 +28,17 @@ from .displacements import (
     dispatch_workflow,
     find_dispatched_workflow_run,
     is_dispatch_timed_out,
+    request_fingerprint as displacement_request_fingerprint,
     workflow_run_status,
 )
 from .models import CatalogResponse, CatalogSearchRequest
 from .persistence import (
     PersistenceConfigurationError,
+    PersistenceConflictError,
     PersistenceError,
     get_job_store,
 )
+from science_adapter.upload_to_drive import DriveUploadError, download_private_result
 
 logger = logging.getLogger(__name__)
 
@@ -326,15 +330,22 @@ def _create_and_dispatch_displacement_job(owner_uid: str, request: CreateDisplac
     try:
         existing = store.get_displacement_job_by_idempotency(owner_uid, request.idempotency_key)
         active = store.find_active_displacement_job(owner_uid, request.aoi_wkt, request.start_date.isoformat(), request.end_date.isoformat())
+        active_jobs = store.list_active_displacement_jobs(owner_uid)
     except PersistenceError:
         raise HTTPException(status_code=503, detail="Could not check displacement job persistence.") from None
     if existing:
+        if displacement_request_fingerprint(existing) != displacement_request_fingerprint(request.model_dump()):
+            raise HTTPException(status_code=409, detail="That idempotency key is already bound to a different displacement request.")
         return _displacement_response(existing)
     if active:
         # A durable active request already exists for this account and exact
         # immutable payload. Never use a page refresh or second browser tab to
         # dispatch a second science workflow.
-        return _displacement_response(active)
+        if displacement_request_fingerprint(active) == displacement_request_fingerprint(request.model_dump()):
+            return _displacement_response(active)
+        raise HTTPException(status_code=409, detail="A different processing configuration is already active for this AOI and date window.")
+    if active_jobs:
+        raise HTTPException(status_code=429, detail="This account already has an active scientific processing job. Wait for it to finish or cancel it before submitting another.")
     values = {
         "owner_uid": owner_uid,
         "idempotency_key": request.idempotency_key,
@@ -342,6 +353,9 @@ def _create_and_dispatch_displacement_job(owner_uid: str, request: CreateDisplac
         "aoi_wkt": request.aoi_wkt,
         "start_date": request.start_date.isoformat(),
         "end_date": request.end_date.isoformat(),
+        **{name: getattr(request, name) for name in PROCESSING_OPTION_DEFAULTS},
+        "request_fingerprint": displacement_request_fingerprint(request.model_dump()),
+        "worker_contract_version": 2,
         "stage": "queued",
     }
     try:
@@ -462,6 +476,7 @@ def resubmit_displacement_job(
     replacement = CreateDisplacementJobRequest(
         aoi_wkt=str(source["aoi_wkt"]), start_date=source["start_date"], end_date=source["end_date"],
         idempotency_key=request.idempotency_key,
+        **{name: source.get(name, default) for name, default in PROCESSING_OPTION_DEFAULTS.items()},
     )
     return _create_and_dispatch_displacement_job(owner_uid, replacement, store)
 
@@ -525,6 +540,12 @@ async def update_displacement_job_from_worker(job_id: UUID, request: Request) ->
         raise HTTPException(status_code=503, detail="Could not read worker job state.") from None
     if not record:
         raise HTTPException(status_code=404, detail="Displacement job was not found.")
+    if record.get("worker_contract_version") == 2:
+        if payload.contract_version != 2 or payload.job_id != job_id:
+            raise HTTPException(status_code=409, detail="Worker callback is not bound to this version-2 job.")
+        expected_fingerprint = record.get("request_fingerprint") or displacement_request_fingerprint(record)
+        if payload.request_fingerprint != expected_fingerprint:
+            raise HTTPException(status_code=409, detail="Worker callback request fingerprint does not match this job.")
     current = JobState(record["state"])
     target = JobState(payload.state)
     stored_sequence = int(record.get("callback_sequence") or 0)
@@ -541,6 +562,15 @@ async def update_displacement_job_from_worker(job_id: UUID, request: Request) ->
         raise HTTPException(status_code=409, detail="Worker callback run does not match the recorded workflow run.")
     if target == JobState.SUCCEEDED and current != JobState.RUNNING:
         raise HTTPException(status_code=409, detail="A result cannot be accepted before the worker reports running.")
+    if target == JobState.SUCCEEDED and record.get("worker_contract_version") == 2:
+        summary = payload.result_summary
+        if (not isinstance(summary, dict) or summary.get("schema_version") != 2
+                or not isinstance(summary.get("validation"), dict)
+                or summary["validation"].get("status") != "PASS"
+                or not isinstance(summary.get("storage_verification"), dict)
+                or summary["storage_verification"].get("status") != "PASS"
+                or not _valid_private_artifacts(summary.get("artifacts"))):
+            raise HTTPException(status_code=409, detail="Version-2 success requires a validated scientific result contract.")
     allowed = {
         (JobState.DISPATCHING, JobState.RUNNING), (JobState.DISPATCHING, JobState.FAILED),
         (JobState.RUNNING, JobState.RUNNING), (JobState.RUNNING, JobState.SUCCEEDED), (JobState.RUNNING, JobState.FAILED),
@@ -554,10 +584,57 @@ async def update_displacement_job_from_worker(job_id: UUID, request: Request) ->
             "error_message": payload.error_message if target == JobState.FAILED else None, "callback_sequence": payload.sequence,
             "stage": payload.stage, "result_summary": payload.result_summary if target == JobState.SUCCEEDED else None,
             "artifact_url": payload.artifact_url if target == JobState.SUCCEEDED else None,
-        })
+        }, expected_state=current.value, expected_sequence=stored_sequence)
+    except PersistenceConflictError:
+        raise HTTPException(status_code=409, detail="Job state changed while this callback was being accepted.") from None
     except PersistenceError:
         raise HTTPException(status_code=503, detail="Could not persist worker job state.") from None
     return {"status": "accepted", "job_id": str(job_id), "job_status": updated["state"]}
+
+
+def _valid_private_artifacts(value: object) -> bool:
+    if not isinstance(value, list) or not value:
+        return False
+    import re
+    for artifact in value:
+        if not isinstance(artifact, dict):
+            return False
+        path, digest, size, drive_id = (artifact.get("path"), artifact.get("sha256"),
+                                        artifact.get("bytes"), artifact.get("drive_file_id"))
+        if (not isinstance(path, str) or path.startswith("/") or ".." in path.split("/")
+                or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+                or not isinstance(size, int) or size <= 0
+                or not isinstance(drive_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", drive_id)):
+            return False
+    return True
+
+
+@app.get("/api/displacement-jobs/{job_id}/artifacts/{artifact_index}")
+async def download_displacement_artifact(job_id: UUID, artifact_index: int, user: dict = Depends(get_current_user)) -> Response:
+    """Stream one private, verified Drive artifact to its authenticated owner."""
+    if artifact_index < 0 or artifact_index > 10_000:
+        raise HTTPException(status_code=404, detail="Result artifact was not found.")
+    try:
+        record = _require_store().get_displacement_job(str(user["uid"]), job_id)
+    except PersistenceError:
+        raise HTTPException(status_code=503, detail="Could not read the requested result artifact.") from None
+    summary = record.get("result_summary") if record else None
+    artifacts = summary.get("artifacts") if isinstance(summary, dict) else None
+    if not _valid_private_artifacts(artifacts) or artifact_index >= len(artifacts):
+        raise HTTPException(status_code=404, detail="Result artifact was not found.")
+    artifact = artifacts[artifact_index]
+    try:
+        received, data = download_private_result(artifact["drive_file_id"])
+    except DriveUploadError:
+        raise HTTPException(status_code=503, detail="Private result storage is unavailable. Retry the download.") from None
+    import hashlib
+    if received["bytes"] != artifact["bytes"] or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
+        raise HTTPException(status_code=409, detail="Stored result artifact no longer matches the validated inventory.")
+    filename = artifact["path"].rsplit("/", 1)[-1]
+    return Response(content=data, media_type="application/octet-stream", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "private, no-store",
+    })
 
 
 if __name__ == "__main__":

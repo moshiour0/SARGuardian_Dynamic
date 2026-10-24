@@ -57,6 +57,20 @@ export type CatalogSearchRequest = {
 
 export type ProcessingJobState = 'queued' | 'dispatching' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
+export type DisplacementProcessingOptions = {
+  product_type: NisarProductType;
+  acquisition_window: 'secondary-acquisition-in-window' | 'both-acquisitions-in-window';
+  retention_mode: 'derived-only' | 'full-lossless';
+  processing_profile: 'validation-pilot' | 'full-aoi';
+};
+
+export const DEFAULT_DISPLACEMENT_OPTIONS: DisplacementProcessingOptions = {
+  product_type: 'BOTH',
+  acquisition_window: 'secondary-acquisition-in-window',
+  retention_mode: 'derived-only',
+  processing_profile: 'validation-pilot',
+};
+
 export type ProcessingJob = {
   id: string;
   owner_uid: string;
@@ -72,7 +86,7 @@ export type ProcessingJob = {
   updated_at: string;
 };
 
-export type DisplacementJob = {
+export type DisplacementJob = Partial<DisplacementProcessingOptions> & {
   id: string;
   state: ProcessingJobState;
   aoi_wkt: string;
@@ -198,15 +212,42 @@ export async function getProcessingJob(jobId: string, user: Pick<User, 'getIdTok
 }
 
 export async function createDisplacementJob(
-  input: { aoiWkt: string; startDate: string; endDate: string; idempotencyKey: string },
+  input: { aoiWkt: string; startDate: string; endDate: string; idempotencyKey: string } & Partial<DisplacementProcessingOptions>,
   user: Pick<User, 'getIdToken'> | null,
 ): Promise<DisplacementJob> {
   return readAuthenticatedPayload<DisplacementJob>(
     `${API_BASE}/api/displacement-jobs`, user, 'Could not submit the displacement job.', {
       method: 'POST',
-      body: JSON.stringify({ aoi_wkt: input.aoiWkt, start_date: input.startDate, end_date: input.endDate, idempotency_key: input.idempotencyKey }),
+      body: JSON.stringify({
+        aoi_wkt: input.aoiWkt, start_date: input.startDate, end_date: input.endDate, idempotency_key: input.idempotencyKey,
+        product_type: input.product_type, acquisition_window: input.acquisition_window,
+        retention_mode: input.retention_mode, processing_profile: input.processing_profile,
+      }),
     },
   );
+}
+
+export async function downloadDisplacementArtifact(
+  jobId: string,
+  artifactIndex: number,
+  user: Pick<User, 'getIdToken'> | null,
+): Promise<Blob> {
+  if (!jobId.trim() || !Number.isInteger(artifactIndex) || artifactIndex < 0) {
+    throw new Error('A valid job and artifact are required.');
+  }
+  const token = await getFirebaseIdToken(user);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/displacement-jobs/${encodeURIComponent(jobId.trim())}/artifacts/${artifactIndex}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new Error('Could not reach the result storage service. Retry the download.');
+  }
+  if (!response.ok) {
+    await readApiPayload(response, 'Could not download this artifact.');
+  }
+  return response.blob();
 }
 
 export async function getDisplacementJob(jobId: string, user: Pick<User, 'getIdToken'> | null): Promise<DisplacementJob> {

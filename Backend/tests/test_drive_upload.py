@@ -25,6 +25,7 @@ class DriveSession:
     def __init__(self) -> None:
         self.requests: list[tuple[str, str, dict]] = []
         self.next_id = 0
+        self.files: dict[str, tuple[str, bytes]] = {}
 
     def post(self, _url, **_kwargs):
         return Response({"access_token": "access-token"})
@@ -40,9 +41,14 @@ class DriveSession:
             return Response({"id": f"folder-{self.next_id}"})
         if method in {"POST", "PATCH"} and url.startswith(f"{drive.DRIVE_UPLOAD_API}/files"):
             self.next_id += 1
-            return Response({"id": f"file-{self.next_id}"})
-        if method == "POST" and url.endswith("/permissions"):
-            return Response({"id": "public-viewer"})
+            identifier = f"file-{self.next_id}"
+            upload = kwargs["files"]["file"]
+            self.files[identifier] = (upload[0], upload[1].read())
+            return Response({"id": identifier})
+        if method == "GET" and "/files/file-" in url:
+            identifier = url.rsplit("/", 1)[-1]
+            name, content = self.files[identifier]
+            return Response({"id": identifier, "name": name, "size": str(len(content)), "md5Checksum": hashlib.md5(content).hexdigest()})
         raise AssertionError(f"Unexpected Drive request: {method} {url}")
 
 
@@ -60,18 +66,17 @@ def write_validated_manifest(work_dir: Path) -> None:
     }), encoding="utf-8")
 
 
-def test_uploads_only_manifest_and_checksum_verified_outputs_to_a_public_job_folder(tmp_path: Path) -> None:
+def test_uploads_only_manifest_and_checksum_verified_outputs_to_a_private_job_folder(tmp_path: Path) -> None:
     write_validated_manifest(tmp_path)
     session = DriveSession()
     config = drive.DriveConfig("client", "secret", "https://oauth2.googleapis.com/token", "refresh", "13BIAepPGLlYYmscUlNPeMCdtepYshjT4")
 
-    url = drive.upload_validated_results(tmp_path, config=config, session=session)
+    receipt = drive.upload_validated_results(tmp_path, config=config, session=session)
 
-    assert url == "https://drive.google.com/drive/folders/folder-1"
+    assert receipt["status"] == "PASS"
     uploaded = [item for item in session.requests if item[1].startswith(f"{drive.DRIVE_UPLOAD_API}/files")]
-    assert len(uploaded) == 2
-    permission = next(item for item in session.requests if item[1].endswith("/permissions") and item[0] == "POST")
-    assert permission[2]["json"] == {"type": "anyone", "role": "reader"}
+    assert len(uploaded) >= 3  # manifest is refreshed after verified inventory is written
+    assert not any("/permissions" in item[1] and item[0] == "POST" for item in session.requests)
 
 
 def test_rejects_tampered_validated_outputs_before_google_drive_is_contacted(tmp_path: Path) -> None:

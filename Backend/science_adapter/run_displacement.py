@@ -19,6 +19,12 @@ from pathlib import Path
 from typing import Any, Iterable
 from uuid import UUID
 
+from . import catalog
+from .geometry import processing_fingerprint, validate_wkt
+from .validation import (ValidationError, create_raster_preview, inventory_hdf5,
+                         retain_quality_raster, sha256_file as validated_sha256,
+                         validate_raster, write_raster_summary)
+
 SCIENCE_REPOSITORY = "moshiour0/SARGuardian"
 SCIENCE_REF = "10639a916c9829850775410b3ed7de62e527770d"
 PRODUCT_TYPES = frozenset({"GUNW", "GOFF"})
@@ -40,6 +46,11 @@ class JobInput:
     science_root: Path
     work_dir: Path
     max_download_gib: float
+    product_type: str = "BOTH"
+    acquisition_window: str = "secondary-acquisition-in-window"
+    retention_mode: str = "derived-only"
+    processing_profile: str = "validation-pilot"
+    stream_upload: bool = False
 
 
 def sha256_file(path: Path) -> str:
@@ -266,10 +277,37 @@ def _raw_path(science_root: Path, record: dict[str, Any]) -> Path:
 
 
 def _validated_output(path: Path, kind: str, product: str) -> dict[str, Any]:
-    return {"path": str(path.relative_to(path.parents[2])).replace("\\", "/"), "kind": kind, "product_type": product, "sha256": sha256_file(path), "bytes": path.stat().st_size}
+    return {"path": str(path).replace("\\", "/"), "kind": kind, "product_type": product, "sha256": sha256_file(path), "bytes": path.stat().st_size}
 
 
-def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, gunw: Any, goff: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def _artifact(work_dir: Path, path: Path, kind: str, product: str | None = None) -> dict[str, Any]:
+    path = Path(path).resolve()
+    root = work_dir.resolve()
+    if root not in path.parents or not path.is_file():
+        raise AdapterError("Generated scientific artifact is outside the isolated job workspace.")
+    result = {"path": path.relative_to(root).as_posix(), "kind": kind,
+              "sha256": sha256_file(path), "bytes": path.stat().st_size}
+    if product:
+        result["product_type"] = product
+    return result
+
+
+def _download_with_retry(acquisition: Any, record: dict[str, Any], raw: Path, work_dir: Path) -> None:
+    for attempt in range(1, 4):
+        try:
+            if raw.exists():
+                raw.unlink()
+            acquisition.download([record["productType"]], [record])
+            if raw.is_file() and raw.stat().st_size > 0:
+                return
+        except Exception as exc:
+            if attempt == 3:
+                raise AdapterError("Download failed after three bounded attempts.") from exc
+        write_stage(work_dir, "download_retry", granule=record["granule"], attempt=attempt)
+    raise AdapterError("Downloaded file was missing or empty.")
+
+
+def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, gunw: Any, goff: Any, aoi_wkt: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     product = str(record["productType"])
     raw = _raw_path(science_root, record)
     granule = Path(str(record["granule"])).name
@@ -278,6 +316,9 @@ def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, g
     output_root = work_dir / "outputs" / Path(granule).stem
     output_root.mkdir(parents=True, exist_ok=True)
     try:
+        inventory = inventory_hdf5(raw, record)
+        inventory_path = output_root / "hdf5-inventory.json"
+        inventory_path.write_text(json.dumps(inventory, indent=2, sort_keys=True), encoding="utf-8")
         if product == "GUNW":
             result = gunw.read_gunw(raw, coherence_threshold=gunw.DEFAULT_COHERENCE, clip_aoi=True, apply_iono=True, auto_ref=True)
             summary: dict[str, Any] = gunw.report(result)
@@ -292,15 +333,42 @@ def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, g
             exports = [output_root / item["export_file"] for item in export_rows if item.get("export_status") == "WRITTEN" and item.get("export_file")]
         else:  # pragma: no cover - selection prevents this path
             raise AdapterError(f"Unsupported product type {product}.")
+        quality_exports = retain_quality_raster(result, product, output_root)
+        validation_reports = []
+        for export_path in [*exports, *quality_exports]:
+            validation = validate_raster(export_path, record, aoi_wkt or os.environ.get("SARGUARDIAN_AOI_WKT", ""))
+            report_path = export_path.with_suffix(".validation.json")
+            report_path.write_text(json.dumps(validation, indent=2, sort_keys=True), encoding="utf-8")
+            validation_reports.append(report_path)
         summary_path = output_root / "product-summary.json"
         summary_path.write_text(json.dumps(summary, default=str, indent=2, sort_keys=True), encoding="utf-8")
-        outputs = [_validated_output(path, "aoi_clipped_geotiff", product) for path in exports]
-        if outputs:
-            outputs.append(_validated_output(summary_path, "processing_summary", product))
-        return {"granule": granule, "product_type": product, "reference": str(record["reference"]), "secondary": str(record["secondary"]), "export_status": "WRITTEN" if outputs else "NO_VALID_SCIENCE_PIXELS"}, outputs
-    finally:
-        if raw.exists():
-            raw.unlink()
+        outputs: list[dict[str, Any]] = []
+        if exports:
+            statistics = write_raster_summary(exports, record, output_root)
+            outputs.extend(_artifact(work_dir, path, "aoi_clipped_geotiff", product) for path in exports)
+            outputs.extend(_artifact(work_dir, path, "quality_auxiliary_geotiff", product) for path in quality_exports)
+            outputs.extend(_artifact(work_dir, path, "raster_validation", product) for path in validation_reports)
+            outputs.append(_artifact(work_dir, statistics, "raster_statistics_csv", product))
+            for export_path in exports:
+                outputs.append(_artifact(work_dir, create_raster_preview(export_path, output_root / "previews"), "raster_preview", product))
+            outputs += [_artifact(work_dir, summary_path, "processing_summary", product),
+                        _artifact(work_dir, inventory_path, "hdf5_inventory", product)]
+        raw_info = {"raw_path": str(raw), "sha256": inventory["sha256"], "bytes": inventory["bytes"],
+                    "inventory": _artifact(work_dir, inventory_path, "hdf5_inventory", product)["path"]}
+        if os.getenv("SARGUARDIAN_RETENTION_MODE", "derived-only") == "full-lossless":
+            archive = output_root / "lossless" / raw.name
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            import shutil
+            shutil.copyfile(raw, archive)
+            if sha256_file(archive) != inventory["sha256"]:
+                raise AdapterError("Lossless raw HDF5 archive failed byte-for-byte verification.")
+            archive_receipt = {"status": "PASS", "method": "byte_identical_copy", "source_sha256": inventory["sha256"], "archive_sha256": sha256_file(archive)}
+            receipt_path = output_root / "lossless-retention.json"
+            receipt_path.write_text(json.dumps(archive_receipt, indent=2, sort_keys=True), encoding="utf-8")
+            outputs += [_artifact(work_dir, archive, "full_lossless_hdf5", product), _artifact(work_dir, receipt_path, "full_lossless_receipt", product)]
+        return {"granule": granule, "product_type": product, "reference": str(record["reference"]), "secondary": str(record["secondary"]), "maturity": record.get("maturity"), "crid": record.get("crid"), "export_status": "WRITTEN" if outputs else "NO_VALID_SCIENCE_PIXELS", "raw": raw_info}, outputs
+    except ValidationError as exc:
+        raise AdapterError(str(exc)) from exc
 
 
 def run_job(job: JobInput) -> dict[str, Any]:
@@ -311,11 +379,19 @@ def run_job(job: JobInput) -> dict[str, Any]:
         raise AdapterError(f"Date range cannot exceed {MAX_DATE_WINDOW_DAYS} days.")
     if not job.science_root.is_dir():
         raise AdapterError("Pinned science source checkout is unavailable.")
-    write_stage(job.work_dir, "validating_input", job_id=job.job_id)
+    try:
+        aoi = validate_wkt(job.aoi_wkt)
+    except ValueError as exc:
+        raise AdapterError(str(exc)) from exc
+    if job.retention_mode not in {"derived-only", "full-lossless"}:
+        raise AdapterError("Unsupported HDF5 retention mode.")
+    os.environ["SARGUARDIAN_RETENTION_MODE"] = job.retention_mode
+    write_stage(job.work_dir, "validating_input", job_id=job.job_id, aoi_sha256=aoi.sha256, aoi_area_km2=aoi.area_km2)
     acquisition, gunw, goff = _load_science_modules(job.science_root, job.aoi_wkt)
     write_stage(job.work_dir, "discovering_products", start_date=str(job.start_date), end_date=str(job.end_date))
-    records = acquisition.recon_nisar(start=job.start_date.isoformat(), end=job.end_date.isoformat())
-    selected = select_eligible_products(records, job.start_date, job.end_date)
+    discovery = catalog.discover(aoi.wkt, job.start_date, job.end_date, product_type=job.product_type,
+                                 acquisition_window=job.acquisition_window, processing_profile=job.processing_profile)
+    selected = discovery["selected"]
     if not selected:
         raise AdapterError("No eligible GUNW or GOFF products have both acquisitions inside the requested date window.")
     write_stage(job.work_dir, "resolving_download_sizes", selected_product_count=len(selected))
@@ -325,29 +401,106 @@ def run_job(job: JobInput) -> dict[str, Any]:
     validated_outputs: list[dict[str, Any]] = []
     for ordinal, record in enumerate(selected, 1):
         write_stage(job.work_dir, "processing_product", ordinal=ordinal, total=len(selected), granule=record["granule"], product_type=record["productType"])
-        acquisition.download([record["productType"]], [record])
-        result, outputs = process_record(record, job.science_root, job.work_dir, gunw, goff)
+        raw = _raw_path(job.science_root, record)
+        _download_with_retry(acquisition, record, raw, job.work_dir)
+        result, outputs = process_record(record, job.science_root, job.work_dir, gunw, goff, job.aoi_wkt)
+        if job.stream_upload and outputs:
+            outputs = _publish_product_checkpoint(job, result, outputs)
+            result["checkpoint"] = "REMOTE_VERIFIED_AND_LOCAL_RAW_CLEANED"
+            write_stage(job.work_dir, "product_checkpoint_verified", granule=record["granule"], outputs=len(outputs))
         product_results.append(result)
         validated_outputs.extend(outputs)
     if not validated_outputs:
         raise AdapterError("Eligible products were processed but none contained valid AOI science pixels.")
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "job_id": job.job_id,
         "status": "succeeded",
         "analysis_type": "aoi_clipped_per_product_displacement_screening",
         "scientific_limit": "Per-product AOI-clipped GUNW/GOFF outputs; no arbitrary-AOI time-series, velocity trend, or forecast is claimed.",
         "science_source_repository": SCIENCE_REPOSITORY,
         "science_source_ref": SCIENCE_REF,
-        "aoi_wkt_sha256": hashlib.sha256(job.aoi_wkt.encode("utf-8")).hexdigest(),
+        "aoi_wkt_sha256": aoi.sha256,
         "start_date": job.start_date.isoformat(), "end_date": job.end_date.isoformat(),
-        "date_policy": "secondary_acquisition_inside_requested_window;reference_may_precede_start",
+        "date_policy": job.acquisition_window,
+        "product_type": job.product_type, "retention_mode": job.retention_mode, "processing_profile": job.processing_profile,
+        "request_fingerprint": processing_fingerprint(aoi_wkt=job.aoi_wkt, start_date=str(job.start_date), end_date=str(job.end_date), product_type=job.product_type, acquisition_window=job.acquisition_window, retention_mode=job.retention_mode, processing_profile=job.processing_profile),
         "selected_product_count": len(selected), "estimated_download_gib": round(download_gib, 3),
-        "products": product_results, "validated_outputs": validated_outputs,
+        "products": product_results, "validated_outputs": validated_outputs, "discovery": discovery,
+        "diagnostics": {
+            "candidate_screening": {"status": "SKIPPED_UNSUPPORTED_CUSTOM_AOI", "reason": "The pinned candidate checker contains named-AOI assumptions and is not validated for arbitrary user polygons."},
+            "time_series_inversion": {"status": "SKIPPED", "reason": "Per-product AOI exports do not establish a common datum, compatible geometry or connected temporal network for a custom-AOI inversion."},
+            "per_pixel_stack": {"status": "INSUFFICIENT_DATA", "reason": "Validation-pilot/per-product processing retains no validated common-lattice multi-date stack. A future stage must prove exact grid, measurement, maturity and reference compatibility before stacking."},
+        },
+        "warnings": ["NISAR BETA and PROVISIONAL products are not interchangeable without a scientifically validated common processing treatment.", "Structural validation and remote storage verification do not independently validate geophysical accuracy."],
+        "cleanup": {"status": "PENDING_REMOTE_STORAGE_VERIFICATION", "raw_files": [item["raw"] for item in product_results]},
     }
-    (job.work_dir / "result-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
-    write_stage(job.work_dir, "completed", validated_output_count=len(validated_outputs))
+    (job.work_dir / "result-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True, default=str), encoding="utf-8")
+    write_stage(job.work_dir, "awaiting_verified_storage", validated_output_count=len(validated_outputs))
     return manifest
+
+
+def cleanup_after_verified_storage(work_dir: Path, science_root: Path) -> dict[str, Any]:
+    """Delete only raw files proven uploaded/validated in the current manifest.
+
+    This is intentionally a separate explicit gate.  A process crash, Drive
+    failure, failed output check, or missing receipt preserves raw input for the
+    runner lifetime and leaves a machine-readable pending cleanup record.
+    """
+    work_dir, science_root = work_dir.resolve(), science_root.resolve()
+    manifest_path = work_dir / "result-manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise AdapterError("Cannot clean raw files without the result manifest.") from exc
+    storage = manifest.get("storage_verification")
+    if not isinstance(storage, dict) or storage.get("status") != "PASS":
+        raise AdapterError("Raw cleanup is blocked until remote result storage is verified.")
+    outputs = manifest.get("validated_outputs")
+    if not isinstance(outputs, list) or not outputs or any(not isinstance(row, dict) or not row.get("drive_file_id") or not row.get("remote_verification", {}).get("status") == "PASS" for row in outputs):
+        raise AdapterError("Raw cleanup is blocked until every validated output has a remote verification receipt.")
+    raw_files = manifest.get("cleanup", {}).get("raw_files")
+    if not isinstance(raw_files, list):
+        raise AdapterError("Raw cleanup manifest is invalid.")
+    incoming = (science_root / "data" / "nisar_l2" / "_incoming").resolve()
+    deleted = []
+    for row in raw_files:
+        if not isinstance(row, dict):
+            raise AdapterError("Raw cleanup manifest contains an invalid entry.")
+        raw_path = Path(str(row.get("raw_path", ""))).resolve()
+        if incoming not in raw_path.parents or raw_path.suffix != ".h5" or not raw_path.name.startswith("NISAR_"):
+            raise AdapterError("Raw cleanup path failed the workspace safety check.")
+        if raw_path.exists():
+            if sha256_file(raw_path) != row.get("sha256") or raw_path.stat().st_size != row.get("bytes"):
+                raise AdapterError("Raw cleanup is blocked because a source HDF5 changed after validation.")
+            raw_path.unlink()
+            deleted.append({"name": raw_path.name, "sha256": row["sha256"], "bytes": row["bytes"]})
+    cleanup = manifest["cleanup"]
+    cleanup.update({"status": "PASS", "deleted": deleted, "deleted_count": len(deleted),
+                    "reason": "All validated outputs had verified private remote-storage receipts."})
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True), encoding="utf-8")
+    write_stage(work_dir, "raw_cleanup_verified", deleted_count=len(deleted))
+    return manifest
+
+
+def _publish_product_checkpoint(job: JobInput, product: dict[str, Any], outputs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Retain one product remotely before the next raw HDF5 download begins."""
+    from .upload_to_drive import upload_validated_results
+    checkpoint = {
+        "schema_version": 2, "status": "succeeded", "job_id": job.job_id,
+        "validated_outputs": outputs,
+        "cleanup": {"status": "PENDING_REMOTE_STORAGE_VERIFICATION", "raw_files": [product["raw"]]},
+    }
+    manifest_path = job.work_dir / "result-manifest.json"
+    manifest_path.write_text(json.dumps(checkpoint, indent=2, sort_keys=True), encoding="utf-8")
+    upload_validated_results(job.work_dir)
+    cleanup_after_verified_storage(job.work_dir, job.science_root)
+    upload_validated_results(job.work_dir)
+    persisted = json.loads(manifest_path.read_text(encoding="utf-8"))
+    verified = persisted.get("validated_outputs")
+    if not isinstance(verified, list) or any(not isinstance(item, dict) or not item.get("drive_file_id") for item in verified):
+        raise AdapterError("Product checkpoint lacks verified private storage receipts.")
+    return verified
 
 
 def _parse_date(value: str) -> date:
@@ -363,10 +516,19 @@ def main() -> int:
     parser.add_argument("--science-root", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--max-download-gib", type=float, default=20.0)
+    parser.add_argument("--product-type", choices=("BOTH", "GUNW", "GOFF"), default="BOTH")
+    parser.add_argument("--acquisition-window", choices=("secondary-acquisition-in-window", "both-acquisitions-in-window"), default="secondary-acquisition-in-window")
+    parser.add_argument("--retention-mode", choices=("derived-only", "full-lossless"), default="derived-only")
+    parser.add_argument("--processing-profile", choices=("validation-pilot", "full-aoi"), default="validation-pilot")
+    parser.add_argument("--cleanup-after-verified-storage", action="store_true")
+    parser.add_argument("--stream-upload", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
-        run_job(JobInput(args.job_id, args.aoi_wkt, args.start_date, args.end_date, args.science_root.resolve(), args.work_dir.resolve(), args.max_download_gib))
+        if args.cleanup_after_verified_storage:
+            cleanup_after_verified_storage(args.work_dir, args.science_root)
+        else:
+            run_job(JobInput(args.job_id, args.aoi_wkt, args.start_date, args.end_date, args.science_root.resolve(), args.work_dir.resolve(), args.max_download_gib, args.product_type, args.acquisition_window, args.retention_mode, args.processing_profile, args.stream_upload))
     except (AdapterError, ValueError) as exc:
         logger.error("%s", exc)
         return 1
