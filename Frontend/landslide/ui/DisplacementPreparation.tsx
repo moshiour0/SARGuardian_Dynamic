@@ -11,15 +11,58 @@ import {
   type DisplacementJob,
 } from '../../src/api/catalog';
 import { ScientificResults } from './ScientificResults';
+import { ELAPSED_TICK_MS, formatElapsed, type GranuleCounts } from './processingStatus';
 
 const activeStates = new Set(['queued', 'dispatching', 'running']);
 const noopTaskActivityChange = () => {};
 
-function elapsed(createdAt: string, updatedAt: string, state: DisplacementJob['state'], now: number) {
-  const finishedAt = activeStates.has(state) ? now : new Date(updatedAt).getTime();
-  const milliseconds = Math.max(0, finishedAt - new Date(createdAt).getTime());
-  const seconds = Math.floor(milliseconds / 1000);
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
+  const products = job.result_summary?.products;
+  if (!Array.isArray(products)) return null;
+  return {
+    GUNW: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GUNW').length,
+    GOFF: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GOFF').length,
+    source: 'processed-results',
+  };
+}
+
+export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack, user }: {
+  job: DisplacementJob;
+  busy: boolean;
+  clock: number;
+  granuleCounts: GranuleCounts | null;
+  onCancel: () => void;
+  onRefresh: () => void;
+  onRetry: () => void;
+  onBack: () => void;
+  user: User;
+}) {
+  const hasActiveJob = activeStates.has(job.state);
+  const counts = resultGranuleCounts(job) || granuleCounts;
+  return <section className="displacement-job-status" aria-live="polite">
+    <h2>Processing status</h2>
+    <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
+    <p><b>Stage:</b> {job.stage}</p>
+    <p><b>Submitted:</b> {new Date(job.created_at).toLocaleString()}</p>
+    <p><b>Age:</b> <time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></p>
+    {counts && <div className="catalog-stats displacement-granule-counts" aria-label="Granule counts">
+      <div><span>GUNW granules</span><strong>{counts.GUNW}</strong></div>
+      <div><span>GOFF granules</span><strong>{counts.GOFF}</strong></div>
+      <div><span>Total granules</span><strong>{counts.GUNW + counts.GOFF}</strong></div>
+      <div><span>Count source</span><strong>{counts.source === 'processed-results' ? 'Processed results' : 'ASF catalogue preflight'}</strong></div>
+    </div>}
+    {counts?.source === 'catalog-preflight' && <p className="catalog-notice">Catalogue matches for this AOI and date window. A validation pilot may process a smaller eligible subset.</p>}
+    {job.error_message && <p role="alert">{job.error_message}</p>}
+    {hasActiveJob && <div className="displacement-task-actions">
+      <button type="button" className="demo-button danger-button" disabled={busy} onClick={onCancel}>{busy ? 'Cancelling…' : 'Cancel task'}</button>
+      <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>Refresh task</button>
+    </div>}
+    {job.state === 'failed' && <div className="displacement-task-actions">
+      <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{busy ? 'Retrying…' : 'Retry task'}</button>
+      <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
+    </div>}
+    <ScientificResults job={job} user={user} />
+  </section>;
 }
 
 function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestigation, options: DisplacementProcessingOptions) {
@@ -42,7 +85,7 @@ function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestig
     || null;
 }
 
-export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
+export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, granuleCounts = null, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; granuleCounts?: GranuleCounts | null; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
   const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<DisplacementJob | null>(null);
   const [jobError, setJobError] = useState('');
@@ -85,7 +128,7 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   useEffect(() => {
     if (!hasActiveJob) return undefined;
     setClock(Date.now());
-    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    const timer = window.setInterval(() => setClock(Date.now()), ELAPSED_TICK_MS);
     return () => window.clearInterval(timer);
   }, [hasActiveJob]);
 
@@ -155,21 +198,9 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
       <span className="result-kicker">DISPLACEMENT PROCESSING</span>
       <h1>Find Displacements</h1>
       <p>Your processing task belongs to this signed-in account and continues if you close the browser. Reopen this page to see its current state.</p>
-      {job && <section className="displacement-job-status" aria-live="polite">
-        <h2>Processing status</h2>
-        <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
-        <p><b>Stage:</b> {job.stage}</p><p><b>Submitted:</b> {new Date(job.created_at).toLocaleString()} · {elapsed(job.created_at, job.updated_at, job.state, clock)}</p>
-        {job.error_message && <p role="alert">{job.error_message}</p>}
-        {hasActiveJob && <div className="displacement-task-actions">
-          <button type="button" className="demo-button danger-button" disabled={busy} onClick={() => void cancel()}>{busy ? 'Cancelling…' : 'Cancel task'}</button>
-          <button type="button" className="investigate-button" disabled={busy} onClick={() => setShowResubmitConfirmation(true)}>Refresh task</button>
-        </div>}
-        {job.state === 'failed' && <div className="displacement-task-actions">
-          <button type="button" className="investigate-button" disabled={busy} onClick={() => void retryFailed()}>{busy ? 'Retrying…' : 'Retry task'}</button>
-          <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
-        </div>}
-        <ScientificResults job={job} user={user} />
-      </section>}
+      {job && <DisplacementJobStatus job={job} busy={busy} clock={clock} granuleCounts={granuleCounts}
+        onCancel={() => void cancel()} onRefresh={() => setShowResubmitConfirmation(true)}
+        onRetry={() => void retryFailed()} onBack={onBack} user={user} />}
 
       {showResubmitConfirmation && job && <section className="displacement-resubmit-dialog" role="dialog" aria-modal="true" aria-labelledby="resubmit-title">
         <h2 id="resubmit-title">Refresh this task?</h2>
@@ -179,7 +210,7 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
           <button type="button" className="investigate-button" disabled={busy} onClick={() => void confirmResubmit()}>{busy ? 'Refreshing…' : 'Cancel and create new task'}</button>
         </div>
       </section>}
-      {jobError && <p role="alert">{jobError}</p>}
+      {jobError && <><p role="alert">{jobError}</p>{!job && <button type="button" className="demo-button" onClick={onBack}>Go to map</button>}</>}
     </section>
   </main>;
 }

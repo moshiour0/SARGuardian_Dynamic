@@ -160,6 +160,7 @@ jobs:
             --retention-mode "$RETENTION_MODE" --processing-profile "$PROCESSING_PROFILE" --stream-upload
           test -s "$SARGUARDIAN_WORK_DIR/result-manifest.json"
           PYTHONPATH="$GITHUB_WORKSPACE/Backend" python - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path

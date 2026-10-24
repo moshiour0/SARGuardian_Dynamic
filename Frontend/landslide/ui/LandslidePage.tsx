@@ -6,6 +6,7 @@ import type { AoiWindowResponse, CatalogProduct, CatalogResponse, DisplacementPr
 import { calculateGeodesicAreaKm2, canSubmitCatalogPreflight, validatePolyline } from '../engine/validation';
 import { prepareInvestigation } from '../engine/investigation';
 import { DisplacementPreparation } from './DisplacementPreparation';
+import { countCatalogGranules, type GranuleCounts } from './processingStatus';
 import { scheduleErrorToastDismissal } from './errorToast';
 import { createAoiOverlayController } from './mapOverlays';
 import { loadLandslideSessionState, persistLandslideSessionState } from './sessionState';
@@ -1177,9 +1178,24 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
   const openDisplacements = async () => {
     if (!catalogValidation.valid || catalogInFlightRef.current || displacementNavigating.current || isDisplacementSubmitting) return;
     displacementNavigating.current = true;
+    catalogInFlightRef.current = true;
     setIsDisplacementSubmitting(true);
+    setIsCatalogLoading(true);
     setCatalogError('');
     try {
+      const requestedSelectionKey = currentSelectionKey.current;
+      // Count both product families for the exact AOI/date selection before
+      // dispatch so the durable processing page can explain what ASF found.
+      const catalogue = await searchNisarCatalog({
+        coordinates: [...coordinates, coordinates[0]],
+        startDate: catalogValidation.payload.start_date,
+        endDate: catalogValidation.payload.end_date,
+        productType: 'BOTH',
+      }, user);
+      if (currentSelectionKey.current !== requestedSelectionKey) throw new Error('The AOI or date window changed while checking granules. Start processing again with the current selection.');
+      if (catalogue.product_count < 1) throw new Error('No GUNW or GOFF granules were found for this AOI and date window.');
+      setProductType('BOTH');
+      setCatalogResult(catalogue);
       await createDisplacementJob({
         aoiWkt: catalogValidation.payload.aoi_wkt,
         startDate: catalogValidation.payload.start_date,
@@ -1193,7 +1209,9 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
       displacementNavigating.current = false;
       setCatalogError(submissionError instanceof Error ? submissionError.message : 'Could not start displacement processing.');
     } finally {
+      catalogInFlightRef.current = false;
       setIsDisplacementSubmitting(false);
+      setIsCatalogLoading(false);
     }
   };
   const actionableValidationError = catalogValidation.valid || coordinates.length < 3 || !windowStart || !windowEnd
@@ -2207,6 +2225,13 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
     </div>
   );
 
+  const displacementGranuleCounts: GranuleCounts | null = catalogResult?.query.product_type === 'BOTH'
+    && catalogValidation.valid
+    && catalogResult.query.start_date === catalogValidation.payload.start_date
+    && catalogResult.query.end_date === catalogValidation.payload.end_date
+    ? countCatalogGranules(catalogResult.products)
+    : null;
+
   return (
     <div className="landslide-route-shell">
       <div className={`landslide-map-keepalive${isResultsPage || isDisplacementPage ? ' is-hidden' : ''}`} aria-hidden={isResultsPage || isDisplacementPage}>
@@ -2215,7 +2240,7 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
       {isResultsPage && renderResultsPage()}
       {isDisplacementPage && <div className="nisar-results-page">
         {renderWorkspaceHeader('DISPLACEMENT PROCESSING', 'Account processing status')}
-        <DisplacementPreparation preparation={catalogValidation} options={processingOptions} onBack={onBackToMap} onTaskActivityChange={onDisplacementTaskActivityChange} user={user} />
+        <DisplacementPreparation preparation={catalogValidation} options={processingOptions} granuleCounts={displacementGranuleCounts} onBack={onBackToMap} onTaskActivityChange={onDisplacementTaskActivityChange} user={user} />
       </div>}
     </div>
   );

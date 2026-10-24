@@ -87,6 +87,13 @@ def test_hdf5_inventory_records_named_datatypes_without_treating_them_as_dataset
     assert result["named_datatypes"][0]["path"] == "/committedStringType"
 
 
+def test_workflow_manifest_checksum_step_imports_hashlib() -> None:
+    workflow = (Path(__file__).parents[2] / ".github" / "workflows" / "sarguardian-displacement.yml").read_text(encoding="utf-8")
+    validation_step = workflow.split("test -s \"$SARGUARDIAN_WORK_DIR/result-manifest.json\"", 1)[1].split("- name: Publish", 1)[0]
+    assert "import hashlib" in validation_step
+    assert "hashlib.sha256" in validation_step
+
+
 def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Path) -> None:
     science_root = tmp_path / "science"
     raw = science_root / "data" / "nisar_l2" / "_incoming" / (NAME + ".h5")
