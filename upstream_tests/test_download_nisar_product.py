@@ -509,7 +509,7 @@ class FakeDownloadResponse(FakeResponse):
         yield from self.body_chunks
 
 
-def test_streamed_download_uses_connect_read_timeouts_and_checks_size(tmp_path):
+def test_streamed_download_uses_connect_read_timeouts_and_reports_progress(tmp_path, capsys):
     response = FakeDownloadResponse(
         body_chunks=[b"abcd", b"efgh"],
         headers={"Content-Length": "8"},
@@ -533,6 +533,10 @@ def test_streamed_download_uses_connect_read_timeouts_and_checks_size(tmp_path):
         "timeout": (30, 120),
     }
     assert response.closed
+    output = capsys.readouterr().out
+    assert "DOWNLOAD_STREAM_STARTED expected_bytes=8" in output
+    assert "DOWNLOAD_PROGRESS_BYTES=4 EXPECTED_BYTES=8" in output
+    assert "DOWNLOAD_COMPLETE_BYTES=8" in output
 
 
 def test_streamed_download_removes_incomplete_file_and_marks_size_mismatch_retryable(tmp_path):

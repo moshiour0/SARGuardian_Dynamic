@@ -38,7 +38,7 @@ Those workflows and their processing tools are the integration source used here.
   dashboard and private-Drive receipt form a complete version-2 result contract.
 - Account jobs use one fixed production contract: both GUNW and GOFF families,
   secondary-acquisition-in-window date matching, upstream `full-aoi-baseline`,
-  and full-lossless retention. This includes boundary pairs whose secondary
+  and derived-only retention. This includes boundary pairs whose secondary
   acquisition is inside the requested window while the reference is earlier,
   and selects every supported product in the resulting AOI/date baseline. The
   configurable pilot profile remains available only when the reusable upstream
@@ -52,5 +52,7 @@ Those workflows and their processing tools are the integration source used here.
   scheduled for the product-level retry pass.
 - Either `GOOGLE_DRIVE_PARENT_FOLDER_ID` (upstream name) or the existing
   `GOOGLE_DRIVE_FOLDER_ID` secret can provide the private retention root.
+- Account processing creates `<private-retention-root>/<job-id>` and keeps the final
+  bundle plus every per-product retained result inside that job-scoped tree.
 
 Frontend source is intentionally outside this integration and remains unchanged.

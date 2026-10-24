@@ -222,6 +222,7 @@ jobs:
       expected_source_bytes: ${{ matrix.expected_source_bytes }}
       retention_profile: ${{ inputs.retention_profile }}
       execution_label: initial
+      job_id: ${{ inputs.job_id }}
     secrets: inherit
 
   retry-plan:
@@ -299,6 +300,7 @@ jobs:
       expected_source_bytes: ${{ matrix.expected_source_bytes }}
       retention_profile: ${{ inputs.retention_profile }}
       execution_label: retry-1
+      job_id: ${{ inputs.job_id }}
     secrets: inherit
 
   dashboard:
@@ -312,6 +314,7 @@ jobs:
       GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
       GOOGLE_DRIVE_PARENT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID || secrets.GOOGLE_DRIVE_FOLDER_ID }}
       RUN_ID_SAFE: SARGuardian-AOI-${{ github.run_id }}-${{ github.run_attempt }}
+      DRIVE_JOB_ID: ${{ inputs.job_id }}
       AOI_ORCHESTRATION_SHA: ${{ needs.manifest.outputs.orchestration_sha }}
     steps:
       - name: Checkout dashboard tools at the manifest's exact code revision
@@ -437,10 +440,12 @@ jobs:
           fi
           python tools/drive_resumable_upload.py \
             --root "$root" --run-name "$RUN_ID_SAFE" \
+            --job-id "$DRIVE_JOB_ID" \
             --files "$root/aoi-derived-results.zip" "$root/aoi-run-summary.json" "$root/products.csv" \
             --out "$root/drive-dashboard-upload-receipt.json"
           python tools/drive_resumable_upload.py \
             --root "$root" --run-name "$RUN_ID_SAFE" \
+            --job-id "$DRIVE_JOB_ID" \
             --files "$root/drive-dashboard-upload-receipt.json" \
             --out "$root/drive-dashboard-receipt-upload.json"
           echo "PRIVATE_DRIVE_DASHBOARD_UPLOAD=PASS"

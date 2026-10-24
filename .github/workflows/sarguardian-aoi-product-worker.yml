@@ -30,6 +30,10 @@ on:
       execution_label:
         required: true
         type: string
+      job_id:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   process:
@@ -39,6 +43,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
+      PYTHONUNBUFFERED: "1"
       PRODUCT_ID: ${{ inputs.product_id }}
       GRANULE_NAME: ${{ inputs.granule_name }}
       PRODUCT_TYPE: ${{ inputs.product_type }}
@@ -52,6 +57,7 @@ jobs:
       SCIENCE_COMMIT: 10639a916c9829850775410b3ed7de62e527770d
       RETENTION_PROFILE: ${{ inputs.retention_profile }}
       PRODUCT_EXECUTION_LABEL: ${{ inputs.execution_label }}
+      DRIVE_JOB_ID: ${{ inputs.job_id }}
       EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
       EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
       EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
@@ -117,6 +123,8 @@ jobs:
           chmod 700 "$root" "$root/raw" "$root/curated"
           echo "raw_dir=$root/raw" >> "$GITHUB_OUTPUT"
           echo "curated_dir=$root/curated" >> "$GITHUB_OUTPUT"
+          printf 'PRODUCT_PROCESSING_START product_id=%s family=%s execution=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE" "$PRODUCT_EXECUTION_LABEL"
 
       - name: Download exactly one raw NISAR granule
         id: download
@@ -136,6 +144,8 @@ jobs:
           while (( attempt <= max_attempts )); do
             attempt_log="$RUNNER_TEMP/sarguardian-download-$PRODUCT_ID-attempt-$attempt.log"
             echo "DOWNLOAD_ATTEMPT=$attempt/$max_attempts"
+            printf 'PRODUCT_MILESTONE=download_started product_id=%s family=%s attempt=%s/%s\n' \
+              "$PRODUCT_ID" "$PRODUCT_TYPE" "$attempt" "$max_attempts"
             if python tools/download_nisar_product.py \
               --product-type "$PRODUCT_TYPE" --maturity "$MATURITY" \
               --granule-name "$GRANULE_NAME" \
@@ -168,6 +178,8 @@ jobs:
           raw_path="$(sed -n 's/^RAW_PRODUCT_PATH=//p' "$log" | tail -n 1)"
           test -n "$raw_path" && test -f "$raw_path"
           echo "raw_path=$raw_path" >> "$GITHUB_OUTPUT"
+          printf 'PRODUCT_MILESTONE=download_completed product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Verify retry source bytes match the first attempt
         id: source_identity
@@ -224,10 +236,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          printf 'PRODUCT_MILESTONE=aoi_validation_started product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
           python tools/validate_product_aoi.py \
             --input "$RAW_PATH" --product-type "$PRODUCT_TYPE" --aoi "$AOI_NAME" \
             --science-root "$PWD/science-source" --science-commit "$SCIENCE_COMMIT" \
             --out "$CURATED_DIR/preflight-report.json"
+          printf 'PRODUCT_MILESTONE=aoi_validation_completed product_id=%s family=%s status=PASS\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Inventory source datasets and metadata
         env:
@@ -292,6 +308,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          printf 'PRODUCT_MILESTONE=science_reader_started product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
           if [[ "$PRODUCT_TYPE" == "GUNW" ]]; then
             stats="$CURATED_DIR/derived/gunw_stats_custom.csv"
             export_dir="$CURATED_DIR/derived/export_custom"
@@ -307,6 +325,8 @@ jobs:
           fi
           test -s "$stats"
           echo "stats_path=$stats" >> "$GITHUB_OUTPUT"
+          printf 'PRODUCT_MILESTONE=science_reader_completed product_id=%s family=%s status=PASS\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Validate derived outputs against the AOI-specific structural checks before cleanup
         id: derived_validation
@@ -316,6 +336,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          printf 'PRODUCT_MILESTONE=derived_validation_started product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
           family_lc="$(printf '%s' "$PRODUCT_TYPE" | tr '[:upper:]' '[:lower:]')"
           export_dir="$CURATED_DIR/derived/export_custom"
           if [[ "$PRODUCT_TYPE" == "GOFF" ]]; then
@@ -326,6 +348,8 @@ jobs:
             --granule-name "$GRANULE_NAME" --aoi-name "$AOI_NAME" \
             --stats-csv "$STATS_PATH" --export-dir "$export_dir" \
             --out "$CURATED_DIR/derived-output-validation.json"
+          printf 'PRODUCT_MILESTONE=derived_validation_completed product_id=%s family=%s status=PASS\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Build the per-granule processing and retention manifest
         id: metadata
@@ -423,6 +447,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          printf 'PRODUCT_MILESTONE=drive_upload_started product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
           mapfile -t derived_files < <(find "$CURATED_DIR/derived" -type f -print | sort)
           files=(
             "$CURATED_DIR/source-inventory.json" "$CURATED_DIR/preflight-report.json"
@@ -449,6 +475,7 @@ jobs:
           python tools/drive_resumable_upload.py "${retry_upload_flags[@]}" \
             --root "$CURATED_DIR" --product-type "$PRODUCT_TYPE" --maturity "$MATURITY" \
             --granule-name "$GRANULE_NAME" --version-tag "$DRIVE_VERSION_TAG" --files "${files[@]}" \
+            --job-id "$DRIVE_JOB_ID" \
             --out "$CURATED_DIR/drive-retention-receipt.json"
           python - <<'PY'
           import json, os
@@ -486,6 +513,7 @@ jobs:
           python tools/drive_resumable_upload.py "${metadata_retry_flags[@]}" \
             --root "$CURATED_DIR" --product-type "$PRODUCT_TYPE" --maturity "$MATURITY" \
             --granule-name "$GRANULE_NAME" --version-tag "$DRIVE_VERSION_TAG" \
+            --job-id "$DRIVE_JOB_ID" \
             --files "$CURATED_DIR/product-processing.json" "$CURATED_DIR/drive-retention-receipt.json" \
             --out "$CURATED_DIR/drive-metadata-upload-receipt.json"
           python - <<'PY'
@@ -500,6 +528,8 @@ jobs:
               raise SystemExit("ERROR=DRIVE_METADATA_RECEIPT_FILES_MISSING")
           print(f"DRIVE_VALIDATED_OUTPUTS_VERIFIED={len(receipt.get('files', []))}")
           PY
+          printf 'PRODUCT_MILESTONE=drive_upload_completed product_id=%s family=%s status=PASS\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Write a compact diagnostic receipt even when a product fails
         if: always()
@@ -617,6 +647,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          printf 'PRODUCT_MILESTONE=cleanup_started product_id=%s family=%s\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -710,6 +742,7 @@ jobs:
           python tools/drive_resumable_upload.py "${cleanup_retry_flags[@]}" \
             --root "$CURATED_DIR" --product-type "$PRODUCT_TYPE" --maturity "$MATURITY" \
             --granule-name "$GRANULE_NAME" --version-tag "$DRIVE_VERSION_TAG" \
+            --job-id "$DRIVE_JOB_ID" \
             --files "$CURATED_DIR/local-cleanup-receipt.json" \
             --out "$CURATED_DIR/drive-cleanup-upload-receipt.json"
           python - <<'PY'
@@ -723,6 +756,8 @@ jobs:
               raise SystemExit("ERROR=LOCAL_CLEANUP_RECEIPT_MISSING_FROM_DRIVE_RECEIPT")
           print("LOCAL_CLEANUP_RECEIPT_DRIVE_VERIFIED=PASS")
           PY
+          printf 'PRODUCT_MILESTONE=cleanup_completed product_id=%s family=%s status=PASS\n' \
+            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Upload verified post-cleanup checkpoint for aggregation
         if: always() && (inputs.execution_label == 'initial' || steps.cleanup.outcome == 'success')
@@ -746,3 +781,22 @@ jobs:
             ${{ runner.temp }}/sarguardian-stream/${{ inputs.product_id }}/curated/drive-cleanup-upload-receipt.json
           if-no-files-found: warn
           retention-days: 14
+
+      - name: Report product completion status
+        if: always()
+        env:
+          DOWNLOAD_OUTCOME: ${{ steps.download.outcome }}
+          AOI_PREFLIGHT_OUTCOME: ${{ steps.aoi_preflight.outcome }}
+          READER_OUTCOME: ${{ steps.reader.outcome }}
+          DERIVED_VALIDATION_OUTCOME: ${{ steps.derived_validation.outcome }}
+          DRIVE_OUTCOME: ${{ steps.drive.outcome }}
+          CLEANUP_OUTCOME: ${{ steps.cleanup.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=failed
+          if [[ "$CLEANUP_OUTCOME" == "success" ]]; then status=completed; fi
+          printf 'PRODUCT_PROCESSING_STATUS=%s product_id=%s family=%s execution=%s download=%s aoi_validation=%s reader=%s derived_validation=%s upload=%s cleanup=%s\n' \
+            "$status" "$PRODUCT_ID" "$PRODUCT_TYPE" "$PRODUCT_EXECUTION_LABEL" \
+            "$DOWNLOAD_OUTCOME" "$AOI_PREFLIGHT_OUTCOME" "$READER_OUTCOME" \
+            "$DERIVED_VALIDATION_OUTCOME" "$DRIVE_OUTCOME" "$CLEANUP_OUTCOME"

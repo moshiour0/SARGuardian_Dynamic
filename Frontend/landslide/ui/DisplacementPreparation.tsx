@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { PreparedInvestigation } from '../engine/investigation';
 import {
@@ -17,17 +17,6 @@ const activeStates = new Set(['queued', 'dispatching', 'running']);
 const noopTaskActivityChange = () => {};
 export const JOB_STATUS_POLL_MS = 2000;
 
-function githubRunUrl(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.username || url.password) return undefined;
-    return url.href;
-  } catch {
-    return undefined;
-  }
-}
-
 function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   const products = job.result_summary?.products;
   if (Array.isArray(products)) return {
@@ -45,9 +34,11 @@ function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   return null;
 }
 
-export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack }: {
+type PendingAction = 'cancel' | 'refresh' | 'retry' | null;
+
+export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack }: {
   job: DisplacementJob;
-  busy: boolean;
+  pendingAction: PendingAction;
   clock: number;
   granuleCounts: GranuleCounts | null;
   onCancel: () => void;
@@ -57,7 +48,7 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
 }) {
   const hasActiveJob = activeStates.has(job.state);
   const counts = resultGranuleCounts(job) || granuleCounts;
-  const workerUrl = githubRunUrl(job.github_run_url);
+  const busy = pendingAction !== null;
   return <section className="displacement-job-status" aria-live="polite">
     <h2>Processing status</h2>
     <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
@@ -72,16 +63,13 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
     </div>}
     {job.error_message && <p role="alert">{job.error_message}</p>}
     {hasActiveJob && <div className="displacement-task-actions">
-      <button type="button" className="demo-button danger-button" disabled={busy} onClick={onCancel}>{busy ? 'Cancelling…' : 'Cancel task'}</button>
-      <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>Refresh task</button>
+      <button type="button" className="demo-button danger-button" disabled={busy} onClick={onCancel}>{pendingAction === 'cancel' ? 'Cancelling…' : 'Cancel task'}</button>
+      <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>{pendingAction === 'refresh' ? 'Refreshing…' : 'Refresh task'}</button>
     </div>}
     {job.state === 'failed' && <div className="displacement-task-actions">
-      <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{busy ? 'Retrying…' : 'Retry task'}</button>
+      <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{pendingAction === 'retry' ? 'Retrying…' : 'Retry task'}</button>
       <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
     </div>}
-    {workerUrl && <p className="displacement-task-actions">
-      <a className="demo-button" href={workerUrl} target="_blank" rel="noreferrer">View worker logs</a>
-    </p>}
     <ScientificResults job={job} />
   </section>;
 }
@@ -107,11 +95,13 @@ function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestig
 }
 
 export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, granuleCounts = null, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; granuleCounts?: GranuleCounts | null; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [job, setJob] = useState<DisplacementJob | null>(null);
   const [jobError, setJobError] = useState('');
   const [accountLoaded, setAccountLoaded] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
+  const statusRequestSequence = useRef(0);
+  const userActionActive = useRef(false);
   const jobId = job?.id;
   const hasActiveJob = Boolean(job && activeStates.has(job.state));
 
@@ -130,28 +120,24 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   // Browser refresh and reopening this route only read durable account state.
   useEffect(() => { void loadAccountJob(); }, [loadAccountJob]);
 
-  const refreshCurrentJob = useCallback(async () => {
-    if (!jobId) return;
-    const nextJob = await getDisplacementJob(jobId, user);
-    setJob(nextJob);
-    setJobError('');
-  }, [jobId, user]);
-
   useEffect(() => {
     if (!jobId || !hasActiveJob) return undefined;
     let stopped = false;
     let requestInFlight = false;
     const refresh = () => {
-      if (stopped || requestInFlight) return;
+      if (stopped || requestInFlight || userActionActive.current) return;
       requestInFlight = true;
+      const requestSequence = ++statusRequestSequence.current;
       void getDisplacementJob(jobId, user)
         .then((nextJob) => {
-          if (stopped) return;
+          if (stopped || requestSequence !== statusRequestSequence.current) return;
           setJob(nextJob);
           setJobError('');
         })
         .catch((error: unknown) => {
-          if (!stopped) setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
+          if (!stopped && requestSequence === statusRequestSequence.current) {
+            setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
+          }
         })
         .finally(() => { requestInFlight = false; });
     };
@@ -161,6 +147,7 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
     }, JOB_STATUS_POLL_MS);
     return () => {
       stopped = true;
+      statusRequestSequence.current += 1;
       window.clearInterval(timer);
     };
   }, [hasActiveJob, jobId, user]);
@@ -186,8 +173,10 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   }, [accountLoaded, job, jobError, onBack]);
 
   const cancel = useCallback(async () => {
-    if (!job || !activeStates.has(job.state) || busy) return;
-    setBusy(true);
+    if (!job || !activeStates.has(job.state) || pendingAction || userActionActive.current) return;
+    userActionActive.current = true;
+    statusRequestSequence.current += 1;
+    setPendingAction('cancel');
     setJobError('');
     try {
       const cancelled = await cancelDisplacementJob(job.id, user);
@@ -199,26 +188,39 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not cancel the displacement job.');
     } finally {
-      setBusy(false);
+      userActionActive.current = false;
+      setPendingAction(null);
     }
-  }, [busy, job, onBack, onTaskActivityChange, user]);
+  }, [job, onBack, onTaskActivityChange, pendingAction, user]);
 
   const refreshManually = useCallback(async () => {
-    if (!job || busy) return;
-    setBusy(true);
+    if (!job || pendingAction || userActionActive.current) return;
+    const requestedJobId = job.id;
+    userActionActive.current = true;
+    const requestSequence = ++statusRequestSequence.current;
+    setPendingAction('refresh');
     setJobError('');
     try {
-      await refreshCurrentJob();
+      const nextJob = await getDisplacementJob(requestedJobId, user);
+      if (requestSequence === statusRequestSequence.current) {
+        setJob((current) => current?.id === requestedJobId ? nextJob : current);
+        setClock(Date.now());
+      }
     } catch (error) {
-      setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
+      if (requestSequence === statusRequestSequence.current) {
+        setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
+      }
     } finally {
-      setBusy(false);
+      userActionActive.current = false;
+      setPendingAction(null);
     }
-  }, [busy, job, refreshCurrentJob]);
+  }, [job, pendingAction, user]);
 
   const retryFailed = useCallback(async () => {
-    if (!job || job.state !== 'failed' || busy) return;
-    setBusy(true);
+    if (!job || job.state !== 'failed' || pendingAction || userActionActive.current) return;
+    userActionActive.current = true;
+    statusRequestSequence.current += 1;
+    setPendingAction('retry');
     setJobError('');
     try {
       const replacement = await resubmitDisplacementJob(job.id, crypto.randomUUID(), user);
@@ -227,9 +229,10 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not retry the displacement job.');
     } finally {
-      setBusy(false);
+      userActionActive.current = false;
+      setPendingAction(null);
     }
-  }, [busy, job, onTaskActivityChange, user]);
+  }, [job, onTaskActivityChange, pendingAction, user]);
 
   if (!job && !jobError) return null;
 
@@ -238,7 +241,7 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
       <span className="result-kicker">DISPLACEMENT PROCESSING</span>
       <h1>Find Displacements</h1>
       <p>Your processing task belongs to this signed-in account and continues if you close the browser. Reopen this page to see its current state.</p>
-      {job && <DisplacementJobStatus job={job} busy={busy} clock={clock} granuleCounts={granuleCounts}
+      {job && <DisplacementJobStatus job={job} pendingAction={pendingAction} clock={clock} granuleCounts={granuleCounts}
         onCancel={() => void cancel()} onRefresh={() => void refreshManually()}
         onRetry={() => void retryFailed()} onBack={onBack} />}
       {jobError && <><p role="alert">{jobError}</p>{!job && <button type="button" className="demo-button" onClick={onBack}>Go to map</button>}</>}

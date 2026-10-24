@@ -141,7 +141,7 @@ def test_failed_job_retry_uses_stored_aoi_dates_and_current_fixed_options(monkey
     first = api.post("/api/displacement-jobs", json=payload()).json()
     store.update_displacement_job(UUID(first["id"]), {
         "state": "failed", "stage": "science_failed", "product_type": "GOFF",
-        "acquisition_window": "both-acquisitions-in-window", "retention_mode": "derived-only",
+        "acquisition_window": "both-acquisitions-in-window", "retention_mode": "full-lossless",
         "processing_profile": "validation-pilot",
     })
 
@@ -155,7 +155,7 @@ def test_failed_job_retry_uses_stored_aoi_dates_and_current_fixed_options(monkey
         "product_type", "acquisition_window", "retention_mode", "processing_profile",
     )} == {
         "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
-        "retention_mode": "full-lossless", "processing_profile": "full-aoi",
+        "retention_mode": "derived-only", "processing_profile": "full-aoi",
     }
     assert len(store.rows) == 2
 
@@ -330,7 +330,7 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
         "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
         "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
-        "retention_mode": "full-lossless", "processing_profile": "full-aoi",
+        "retention_mode": "derived-only", "processing_profile": "full-aoi",
     }
 
 

@@ -26,7 +26,7 @@ class CreateDisplacementJobRequest(BaseModel):
     idempotency_key: str = Field(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
     product_type: Literal["BOTH", "GUNW", "GOFF"] = "BOTH"
     acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
-    retention_mode: Literal["derived-only", "full-lossless"] = "full-lossless"
+    retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
     processing_profile: Literal["validation-pilot", "full-aoi"] = "full-aoi"
 
     @field_validator("aoi_wkt")
@@ -45,7 +45,7 @@ PROCESSING_OPTION_DEFAULTS = {
 ACCOUNT_PROCESSING_OPTIONS = {
     "product_type": "BOTH",
     "acquisition_window": "secondary-acquisition-in-window",
-    "retention_mode": "full-lossless",
+    "retention_mode": "derived-only",
     "processing_profile": "full-aoi",
 }
 

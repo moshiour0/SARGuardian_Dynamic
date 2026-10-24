@@ -67,7 +67,7 @@ export type DisplacementProcessingOptions = {
 export const DEFAULT_DISPLACEMENT_OPTIONS: DisplacementProcessingOptions = {
   product_type: 'BOTH',
   acquisition_window: 'secondary-acquisition-in-window',
-  retention_mode: 'full-lossless',
+  retention_mode: 'derived-only',
   processing_profile: 'full-aoi',
 };
 
@@ -257,6 +257,7 @@ export async function getDisplacementJob(jobId: string, user: Pick<User, 'getIdT
     `${API_BASE}/api/displacement-jobs/${encodeURIComponent(safeId)}`,
     user,
     'Could not refresh the displacement job.',
+    { cache: 'no-store' },
   );
 }
 
@@ -265,6 +266,7 @@ export async function listDisplacementJobs(user: Pick<User, 'getIdToken'> | null
     `${API_BASE}/api/displacement-jobs`,
     user,
     'Could not load your displacement jobs.',
+    { cache: 'no-store' },
   );
 }
 

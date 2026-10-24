@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createQueuedJob, getProcessingJob, listProcessingJobs, searchNisarCatalog } from './catalog';
+import {
+  createQueuedJob,
+  getDisplacementJob,
+  getProcessingJob,
+  listDisplacementJobs,
+  listProcessingJobs,
+  searchNisarCatalog,
+} from './catalog';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -160,6 +167,21 @@ describe('NISAR catalogue preflight API contract', () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:8000/api/jobs');
     expect(fetchMock.mock.calls[1][0]).toBe('http://localhost:8000/api/jobs/job-1');
+  });
+
+  it('bypasses browser caches when refreshing displacement status', async () => {
+    const job = { id: 'displacement-1', state: 'running' };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [job] })
+      .mockResolvedValueOnce({ ok: true, json: async () => job });
+    vi.stubGlobal('fetch', fetchMock);
+    const jobUser = { getIdToken: vi.fn().mockResolvedValue('firebase-id-token') };
+
+    await listDisplacementJobs(jobUser);
+    await getDisplacementJob('displacement-1', jobUser);
+
+    expect(fetchMock.mock.calls[0][1].cache).toBe('no-store');
+    expect(fetchMock.mock.calls[1][1].cache).toBe('no-store');
   });
 
   it('does not request job creation without an authenticated user', async () => {

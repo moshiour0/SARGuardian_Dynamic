@@ -37,7 +37,7 @@ run-name: Displacement ${{ inputs.job_id }}
         options: [secondary-acquisition-in-window, both-acquisitions-in-window]
       retention_mode:
         required: false
-        default: full-lossless
+        default: derived-only
         type: choice
         options: [derived-only, full-lossless]
       processing_profile:

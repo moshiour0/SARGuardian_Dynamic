@@ -46,7 +46,7 @@ describe('displacement preparation route', () => {
     expect(JOB_STATUS_POLL_MS).toBe(2000);
     expect(DEFAULT_DISPLACEMENT_OPTIONS).toEqual({
       product_type: 'BOTH', acquisition_window: 'secondary-acquisition-in-window',
-      retention_mode: 'full-lossless', processing_profile: 'full-aoi',
+      retention_mode: 'derived-only', processing_profile: 'full-aoi',
     });
     expect(formatElapsed('2026-10-24T10:00:00Z', '2026-10-24T10:00:02Z', 'running', Date.parse('2026-10-24T10:00:03Z'))).toBe('0m 3s');
     expect(countCatalogGranules([
@@ -57,7 +57,7 @@ describe('displacement preparation route', () => {
       start_date: '2026-09-27', end_date: '2026-10-24', created_at: '2026-10-24T10:00:00Z', updated_at: '2026-10-24T10:01:05Z',
       error_message: 'Worker failed.',
     } as const;
-    const html = renderToStaticMarkup(<DisplacementJobStatus job={failedJob} busy={false} clock={Date.parse('2026-10-24T10:02:00Z')}
+    const html = renderToStaticMarkup(<DisplacementJobStatus job={failedJob} pendingAction={null} clock={Date.parse('2026-10-24T10:02:00Z')}
       granuleCounts={{ GUNW: 4, GOFF: 3, source: 'catalog-preflight' }} onCancel={() => {}} onRefresh={() => {}}
       onRetry={() => {}} onBack={() => {}} />);
     expect(html).toContain('Age:');
@@ -74,14 +74,22 @@ describe('displacement preparation route', () => {
       github_run_url: 'https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123', result_summary: {
       catalog_granule_counts: { GUNW: 8, GOFF: 5 }, selected_granule_counts: { GUNW: 1, GOFF: 1 },
     } } as const;
-    const runningHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} busy={false}
+    const runningHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} pendingAction={null}
       clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
       onRetry={() => {}} onBack={() => {}} />);
     expect(runningHtml).toContain('>8<');
     expect(runningHtml).toContain('>5<');
     expect(runningHtml).toContain('Worker discovery');
-    expect(runningHtml).toContain('View worker logs');
-    expect(runningHtml).toContain('https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123');
+    expect(runningHtml).toContain('Refresh task');
+    expect(runningHtml).not.toContain('View worker logs');
+    expect(runningHtml).not.toContain('https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123');
+
+    const refreshingHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} pendingAction="refresh"
+      clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
+      onRetry={() => {}} onBack={() => {}} />);
+    expect(refreshingHtml).toContain('Refreshing…');
+    expect(refreshingHtml).toContain('Cancel task');
+    expect(refreshingHtml).not.toContain('Cancelling…');
   });
 
   it('shows only one Drive-folder download action after successful processing', () => {

@@ -55,7 +55,7 @@ describe('validated Landslide session state', () => {
       productType: 'SECRET',
       processingOptions: {
         product_type: 'GOFF', acquisition_window: 'both-acquisitions-in-window',
-        retention_mode: 'derived-only', processing_profile: 'validation-pilot',
+        retention_mode: 'full-lossless', processing_profile: 'validation-pilot',
       },
       catalogResult: { mode: 'not-a-catalogue' },
     })]]);
@@ -70,7 +70,7 @@ describe('validated Landslide session state', () => {
     expect(restored.catalogResult).toBeNull();
     expect(restored.processingOptions).toEqual({
       product_type: 'BOTH', acquisition_window: 'secondary-acquisition-in-window',
-      retention_mode: 'full-lossless', processing_profile: 'full-aoi',
+      retention_mode: 'derived-only', processing_profile: 'full-aoi',
     });
   });
 
