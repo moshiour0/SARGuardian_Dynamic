@@ -96,6 +96,10 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
         raise CallbackError("Dynamic-AOI manifest contains invalid catalog product counts.")
     if receipt.get("remote_verification") != "PASS" or not isinstance(files, list) or not files:
         raise CallbackError("Dynamic-AOI dashboard files were not verified in private Drive storage.")
+    remote_folder_id = receipt.get("remote_folder_id")
+    if (not isinstance(remote_folder_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", remote_folder_id)):
+        raise CallbackError("Dynamic-AOI Drive receipt does not identify a valid private result folder.")
     expected_names = {"aoi-derived-results.zip", "aoi-run-summary.json", "products.csv"}
     if {item.get("name") for item in files if isinstance(item, dict)} != expected_names:
         raise CallbackError("Drive receipt does not contain the complete account result package.")
@@ -124,7 +128,7 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
         },
         "storage_verification": {
             "status": "PASS", "provider": "google_drive",
-            "remote_folder_id": receipt.get("remote_folder_id"),
+            "remote_folder_id": remote_folder_id,
         },
         "artifacts": artifacts,
         "products": products,

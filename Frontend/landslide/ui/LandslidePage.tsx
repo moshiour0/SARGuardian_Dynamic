@@ -2202,9 +2202,6 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
                       <label>Acquisition dates<select aria-label="Acquisition date selection" value={processingOptions.acquisition_window} onChange={(event) => setProcessingOptions((current) => ({ ...current, acquisition_window: event.target.value as DisplacementProcessingOptions['acquisition_window'] }))}>
                         <option value="secondary-acquisition-in-window">Secondary within date window</option><option value="both-acquisitions-in-window">Both within date window</option>
                       </select></label>
-                      <label>Processing scope<select aria-label="Processing scope" value={processingOptions.processing_profile} onChange={(event) => setProcessingOptions((current) => ({ ...current, processing_profile: event.target.value as DisplacementProcessingOptions['processing_profile'] }))}>
-                        <option value="validation-pilot">Small validation pilot</option><option value="full-aoi">All eligible products within limits</option>
-                      </select></label>
                       <label>Retained data<select aria-label="Retained data" value={processingOptions.retention_mode} onChange={(event) => setProcessingOptions((current) => ({ ...current, retention_mode: event.target.value as DisplacementProcessingOptions['retention_mode'] }))}>
                         <option value="derived-only">Validated derived outputs</option><option value="full-lossless">Full lossless archive</option>
                       </select></label>

@@ -15,6 +15,7 @@ import { ELAPSED_TICK_MS, formatElapsed, type GranuleCounts } from './processing
 
 const activeStates = new Set(['queued', 'dispatching', 'running']);
 const noopTaskActivityChange = () => {};
+export const JOB_STATUS_POLL_MS = 2000;
 
 function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   const products = job.result_summary?.products;
@@ -33,7 +34,7 @@ function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   return null;
 }
 
-export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack, user }: {
+export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack }: {
   job: DisplacementJob;
   busy: boolean;
   clock: number;
@@ -42,7 +43,6 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
   onRefresh: () => void;
   onRetry: () => void;
   onBack: () => void;
-  user: User;
 }) {
   const hasActiveJob = activeStates.has(job.state);
   const counts = resultGranuleCounts(job) || granuleCounts;
@@ -68,7 +68,7 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
       <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{busy ? 'Retrying…' : 'Retry task'}</button>
       <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
     </div>}
-    <ScientificResults job={job} user={user} />
+    <ScientificResults job={job} />
   </section>;
 }
 
@@ -97,7 +97,6 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   const [job, setJob] = useState<DisplacementJob | null>(null);
   const [jobError, setJobError] = useState('');
   const [accountLoaded, setAccountLoaded] = useState(false);
-  const [showResubmitConfirmation, setShowResubmitConfirmation] = useState(false);
   const [clock, setClock] = useState(() => Date.now());
   const jobId = job?.id;
   const hasActiveJob = Boolean(job && activeStates.has(job.state));
@@ -117,17 +116,39 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   // Browser refresh and reopening this route only read durable account state.
   useEffect(() => { void loadAccountJob(); }, [loadAccountJob]);
 
+  const refreshCurrentJob = useCallback(async () => {
+    if (!jobId) return;
+    const nextJob = await getDisplacementJob(jobId, user);
+    setJob(nextJob);
+    setJobError('');
+  }, [jobId, user]);
+
   useEffect(() => {
     if (!jobId || !hasActiveJob) return undefined;
-    const timer = window.setInterval(() => {
+    let stopped = false;
+    let requestInFlight = false;
+    const refresh = () => {
+      if (stopped || requestInFlight) return;
+      requestInFlight = true;
       void getDisplacementJob(jobId, user)
         .then((nextJob) => {
+          if (stopped) return;
           setJob(nextJob);
           setJobError('');
         })
-        .catch((error: unknown) => setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.'));
-    }, 5000);
-    return () => window.clearInterval(timer);
+        .catch((error: unknown) => {
+          if (!stopped) setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
+        })
+        .finally(() => { requestInFlight = false; });
+    };
+    refresh();
+    const timer = window.setInterval(() => {
+      refresh();
+    }, JOB_STATUS_POLL_MS);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
   }, [hasActiveJob, jobId, user]);
 
   // The displayed elapsed time is local UI state, not a server poll. Keep it
@@ -168,20 +189,18 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
     }
   }, [busy, job, onBack, onTaskActivityChange, user]);
 
-  const confirmResubmit = useCallback(async () => {
-    if (!job || !activeStates.has(job.state) || busy) return;
+  const refreshManually = useCallback(async () => {
+    if (!job || busy) return;
     setBusy(true);
     setJobError('');
     try {
-      const replacement = await resubmitDisplacementJob(job.id, crypto.randomUUID(), user);
-      setJob(replacement);
-      setShowResubmitConfirmation(false);
+      await refreshCurrentJob();
     } catch (error) {
-      setJobError(error instanceof Error ? error.message : 'Could not replace the displacement job.');
+      setJobError(error instanceof Error ? error.message : 'Could not refresh the displacement job.');
     } finally {
       setBusy(false);
     }
-  }, [busy, job, user]);
+  }, [busy, job, refreshCurrentJob]);
 
   const retryFailed = useCallback(async () => {
     if (!job || job.state !== 'failed' || busy) return;
@@ -206,17 +225,8 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
       <h1>Find Displacements</h1>
       <p>Your processing task belongs to this signed-in account and continues if you close the browser. Reopen this page to see its current state.</p>
       {job && <DisplacementJobStatus job={job} busy={busy} clock={clock} granuleCounts={granuleCounts}
-        onCancel={() => void cancel()} onRefresh={() => setShowResubmitConfirmation(true)}
-        onRetry={() => void retryFailed()} onBack={onBack} user={user} />}
-
-      {showResubmitConfirmation && job && <section className="displacement-resubmit-dialog" role="dialog" aria-modal="true" aria-labelledby="resubmit-title">
-        <h2 id="resubmit-title">Refresh this task?</h2>
-        <p>The current workflow will be cancelled. A new workflow will start with the exact same saved AOI and dates.</p>
-        <div className="displacement-resubmit-actions">
-          <button type="button" className="demo-button" disabled={busy} onClick={() => setShowResubmitConfirmation(false)}>Keep current task</button>
-          <button type="button" className="investigate-button" disabled={busy} onClick={() => void confirmResubmit()}>{busy ? 'Refreshing…' : 'Cancel and create new task'}</button>
-        </div>
-      </section>}
+        onCancel={() => void cancel()} onRefresh={() => void refreshManually()}
+        onRetry={() => void retryFailed()} onBack={onBack} />}
       {jobError && <><p role="alert">{jobError}</p>{!job && <button type="button" className="demo-button" onClick={onBack}>Go to map</button>}</>}
     </section>
   </main>;

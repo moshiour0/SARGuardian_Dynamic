@@ -311,7 +311,7 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
         "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
         "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
-        "retention_mode": "derived-only", "processing_profile": "validation-pilot",
+        "retention_mode": "derived-only", "processing_profile": "full-aoi",
     }
 
 

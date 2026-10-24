@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { DisplacementJobStatus, DisplacementPreparation } from '../ui/DisplacementPreparation';
+import { DisplacementJobStatus, DisplacementPreparation, JOB_STATUS_POLL_MS } from '../ui/DisplacementPreparation';
+import { ScientificResults } from '../ui/ScientificResults';
 import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/processingStatus';
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
@@ -41,6 +42,7 @@ describe('displacement preparation route', () => {
   });
   it('keeps a one-second age tick and renders failed recovery actions with granule counts', () => {
     expect(ELAPSED_TICK_MS).toBe(1000);
+    expect(JOB_STATUS_POLL_MS).toBe(2000);
     expect(formatElapsed('2026-10-24T10:00:00Z', '2026-10-24T10:00:02Z', 'running', Date.parse('2026-10-24T10:00:03Z'))).toBe('0m 3s');
     expect(countCatalogGranules([
       { product_type: 'GUNW' }, { product_type: 'GOFF' }, { product_type: 'GUNW' },
@@ -52,7 +54,7 @@ describe('displacement preparation route', () => {
     } as const;
     const html = renderToStaticMarkup(<DisplacementJobStatus job={failedJob} busy={false} clock={Date.parse('2026-10-24T10:02:00Z')}
       granuleCounts={{ GUNW: 4, GOFF: 3, source: 'catalog-preflight' }} onCancel={() => {}} onRefresh={() => {}}
-      onRetry={() => {}} onBack={() => {}} user={user} />);
+      onRetry={() => {}} onBack={() => {}} />);
     expect(html).toContain('Age:');
     expect(html).toContain('1m 5s');
     expect(html).toContain('GUNW granules');
@@ -68,9 +70,32 @@ describe('displacement preparation route', () => {
     } } as const;
     const runningHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} busy={false}
       clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
-      onRetry={() => {}} onBack={() => {}} user={user} />);
+      onRetry={() => {}} onBack={() => {}} />);
     expect(runningHtml).toContain('>8<');
     expect(runningHtml).toContain('>5<');
     expect(runningHtml).toContain('Worker discovery');
+  });
+
+  it('shows only one Drive-folder download action after successful processing', () => {
+    const succeededJob = {
+      id: 'succeeded-job', state: 'succeeded', stage: 'completed',
+      aoi_wkt: 'POLYGON((85 27, 85.01 27, 85 27.01, 85 27))',
+      start_date: '2026-09-27', end_date: '2026-10-24',
+      created_at: '2026-10-24T10:00:00Z', updated_at: '2026-10-24T10:10:00Z',
+      result_summary: {
+        storage_verification: { status: 'PASS', remote_folder_id: 'private-drive-folder-123' },
+        diagnostics: { pixel_stack: { status: 'PASS' } },
+        products: [{ product_type: 'GUNW' }],
+        artifacts: [{ path: 'aoi-derived-results.zip' }],
+      },
+    } as const;
+
+    const html = renderToStaticMarkup(<ScientificResults job={succeededJob as never} />);
+
+    expect(html).toContain('Download results');
+    expect(html).toContain('https://drive.google.com/drive/folders/private-drive-folder-123');
+    expect(html).not.toContain('Scientific diagnostics');
+    expect(html).not.toContain('Input products');
+    expect(html).not.toContain('Retained scientific outputs');
   });
 });

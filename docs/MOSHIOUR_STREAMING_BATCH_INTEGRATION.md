@@ -37,8 +37,10 @@ Those workflows and their processing tools are the integration source used here.
   persist discovered GUNW/GOFF counts, and accept success only when the upstream
   dashboard and private-Drive receipt form a complete version-2 result contract.
 - Existing `product_type` (`BOTH`, `GUNW`, `GOFF`) is applied during catalog
-  discovery. Existing processing profile `full-aoi` maps to upstream
-  `full-aoi-baseline`.
+  discovery. Account jobs always use upstream `full-aoi-baseline`, so every
+  eligible product in the requested AOI/date baseline is selected. The pilot
+  profile remains available only when the reusable upstream workflow is run
+  directly for engineering validation.
 - ASF catalog calls are bounded to two 30-second attempts. Username/password
   authentication exchanges credentials for an EDL bearer token with a
   20-second timeout and skips the unrelated `asf-urs` cookie flow, which can

@@ -68,7 +68,7 @@ export const DEFAULT_DISPLACEMENT_OPTIONS: DisplacementProcessingOptions = {
   product_type: 'BOTH',
   acquisition_window: 'secondary-acquisition-in-window',
   retention_mode: 'derived-only',
-  processing_profile: 'validation-pilot',
+  processing_profile: 'full-aoi',
 };
 
 export type ProcessingJob = {

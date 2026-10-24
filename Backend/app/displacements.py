@@ -27,7 +27,7 @@ class CreateDisplacementJobRequest(BaseModel):
     product_type: Literal["BOTH", "GUNW", "GOFF"] = "BOTH"
     acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
     retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
-    processing_profile: Literal["validation-pilot", "full-aoi"] = "validation-pilot"
+    processing_profile: Literal["validation-pilot", "full-aoi"] = "full-aoi"
 
     @field_validator("aoi_wkt")
     @classmethod

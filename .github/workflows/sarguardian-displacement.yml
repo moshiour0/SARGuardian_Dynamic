@@ -42,7 +42,7 @@ run-name: Displacement ${{ inputs.job_id }}
         options: [derived-only, full-lossless]
       processing_profile:
         required: false
-        default: validation-pilot
+        default: full-aoi
         type: choice
         options: [validation-pilot, full-aoi]
 
@@ -109,7 +109,7 @@ jobs:
       start_date: ${{ inputs.start_date }}
       end_date: ${{ inputs.end_date }}
       date_filter_mode: ${{ inputs.acquisition_window }}
-      run_profile: ${{ inputs.processing_profile == 'full-aoi' && 'full-aoi-baseline' || 'validation-pilot' }}
+      run_profile: full-aoi-baseline
       retention_profile: ${{ inputs.retention_mode }}
       product_type: ${{ inputs.product_type }}
       job_id: ${{ inputs.job_id }}

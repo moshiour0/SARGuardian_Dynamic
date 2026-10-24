@@ -129,7 +129,7 @@ export function loadLandslideSessionState(uid: string): LandslideSessionState {
       product_type: storedOptions.product_type === 'GUNW' || storedOptions.product_type === 'GOFF' ? storedOptions.product_type : 'BOTH',
       acquisition_window: storedOptions.acquisition_window === 'both-acquisitions-in-window' ? storedOptions.acquisition_window : 'secondary-acquisition-in-window',
       retention_mode: storedOptions.retention_mode === 'full-lossless' ? storedOptions.retention_mode : 'derived-only',
-      processing_profile: storedOptions.processing_profile === 'full-aoi' ? storedOptions.processing_profile : 'validation-pilot',
+      processing_profile: 'full-aoi',
     };
 
     return {

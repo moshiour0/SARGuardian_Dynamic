@@ -44,6 +44,7 @@ describe('validated Landslide session state', () => {
     expect(restored.windowStart).toBe('2026-08-01');
     expect(restored.catalogResult?.products[0].granule_name).toBe('NISAR_GOFF_1');
     expect(restored.selectedHarmonyProduct?.granule_name).toBe('NISAR_GOFF_1');
+    expect(restored.processingOptions.processing_profile).toBe('full-aoi');
     expect(storage.get('sarguardian.landslide.session.v1.user-1')).not.toContain('token');
   });
 
@@ -63,6 +64,7 @@ describe('validated Landslide session state', () => {
     expect(restored.coordinates).toEqual([]);
     expect(restored.areaClosed).toBe(false);
     expect(restored.catalogResult).toBeNull();
+    expect(restored.processingOptions.processing_profile).toBe('full-aoi');
   });
 
   it('rejects invalid dates, out-of-range coordinates, and orphaned selections', () => {
