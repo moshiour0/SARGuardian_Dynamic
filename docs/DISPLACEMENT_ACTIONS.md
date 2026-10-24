@@ -27,16 +27,30 @@ The existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, Firebase service-accou
   account with Drive upload access.
 - `GOOGLE_DRIVE_FOLDER_ID`: the parent folder for per-job result folders.
 
-After scientific validation, the runner creates one folder named with the durable job
-UUID and uploads only `result-manifest.json` and checksum-verified outputs. New result
-folders must be private: the existing API verifies Firebase ownership and streams a
-requested artifact only after rechecking its retained SHA-256 and byte count. Existing
-historical links remain available for backwards compatibility, but no new anyone-link
-permission is created. It never uploads raw NISAR HDF5 in `derived-only` mode. If Drive
-authentication, upload, privacy verification, or remote byte verification fails, the
-workflow fails and raw cleanup is blocked.
-The workflow runs the version-controlled `Backend/science_adapter/run_displacement.py` adapter. It pins `moshiour0/SARGuardian` at `10639a916c9829850775410b3ed7de62e527770d`, uses exact WKT only, queries ASF separately by family and BETA/PROVISIONAL maturity, and retains catalog/identity evidence. The default policy selects pairs by an in-window **secondary acquisition** date; an optional strict mode requires both dates in the window. The manifest records the policy, selected and excluded variants, source hashes, structural validation and cleanup receipts.
+The account-facing workflow calls the vendored dynamic-AOI streaming pipeline from
+`moshiour0/SARGuardian-backend`. It pins `moshiour0/SARGuardian` at
+`10639a916c9829850775410b3ed7de62e527770d`, uses the submitted WKT polygon unchanged,
+queries ASF separately by family and BETA/PROVISIONAL maturity, and retains
+catalog/identity evidence. The default policy selects pairs by an in-window **secondary
+acquisition** date; an optional strict mode requires both dates in the window. Products
+run sequentially, with one raw download per execution and at most one receipt-gated
+product retry.
 
-Before reporting success, the workflow requires a version-2 JSON manifest with the dispatched job ID, canonical WKT/options fingerprint, exact dates/source repository/ref, checksummed outputs, validation reports, private Drive IDs and remote receipts. Raw files are deleted only after those receipts pass; `full-lossless` retains a byte-identical HDF5 archive. A zero process exit code is insufficient. The supported result is explicitly AOI-clipped, per-product GUNW/GOFF displacement screening; it is not an arbitrary-AOI time-series or hazard forecast. Named-AOI candidate screening and dynamic-AOI inversion return explicit skipped/insufficient-evidence states. Callbacks have signed, ordered sequence numbers and bind job ID plus request fingerprint; GitHub terminal success without the signed completion callback is recorded as failure, never as science success.
+Each product is validated against the requested AOI, processed by the original pinned
+GUNW/GOFF reader, uploaded to private Drive, and remotely verified before local raw data
+can be deleted. The dashboard job then retains the derived-results ZIP, run summary and
+product table. The API verifies Firebase ownership and streams a requested artifact only
+after rechecking its retained SHA-256 and byte count. No public Drive permission is
+created. `derived-only` never retains raw NISAR HDF5; `full-lossless` retains the
+lossless curated archive. Missing Drive credentials or any failed remote verification
+prevents a success callback.
+
+Before reporting success, the wrapper cross-checks the selected-product manifest,
+processing report, PASS run summary, checksummed private Drive receipt, submitted request
+fingerprint and exact science/orchestration commits. A zero process exit code is
+insufficient. The supported result is AOI-clipped, per-product GUNW/GOFF displacement
+screening; it is not a common-reference time series or hazard forecast. Callbacks have
+signed, ordered sequence numbers and bind the job ID plus request fingerprint. GitHub
+terminal success without the signed completion callback is recorded as failure.
 
 Run [002_displacement_jobs.sql](../Backend/migrations/002_displacement_jobs.sql) after the prior processing-job migration. Keep direct browser access revoked; the trusted backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.
