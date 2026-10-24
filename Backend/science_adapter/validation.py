@@ -210,6 +210,48 @@ def _inside_polygon(lon: Any, lat: Any, ring: list[tuple[float, float]]) -> Any:
     return inside | boundary
 
 
+def enforce_retention_aoi_mask(path: Path, aoi_wkt: str) -> dict:
+    """Remove retained values outside the submitted polygon before validation.
+
+    The pinned exporters produce a compact AOI *window*.  The window can
+    include edge cells whose centres fall outside an irregular polygon.  Those
+    cells must be represented as NaN in an artifact retained for a custom AOI;
+    this routine only removes values and records the change in GeoTIFF tags.
+    """
+    import numpy as np
+    import rasterio
+    from pyproj import Transformer
+
+    ring = _ring(aoi_wkt)
+    path = Path(path)
+    removed = 0
+    valid_count = 0
+    with rasterio.open(path, "r+") as src:
+        if src.crs is None:
+            raise ValidationError("Raster CRS is missing before custom-AOI retention masking.")
+        affine = src.transform
+        transformer = Transformer.from_crs(src.crs, "EPSG:4326", always_xy=True)
+        for _, window in src.block_windows(1):
+            data = src.read(window=window)
+            rr, cc = np.indices((int(window.height), int(window.width)))
+            xs = affine.c + (cc + window.col_off + .5) * affine.a
+            ys = affine.f + (rr + window.row_off + .5) * affine.e
+            lon, lat = transformer.transform(xs, ys)
+            outside = ~_inside_polygon(lon, lat, ring)
+            removed += int((np.isfinite(data) & outside).sum())
+            if outside.any():
+                data[:, outside] = np.nan
+                src.write(data, window=window)
+            valid_count += int(np.isfinite(data[0]).sum())
+        src.update_tags(
+            export_status="WRITTEN" if valid_count else "NO_VALID_PIXELS",
+            valid_pixel_count=str(valid_count),
+            retention_aoi_mask_enforced="true",
+            retention_aoi_mask_removed_values=str(removed),
+        )
+    return {"status": "PASS", "removed_finite_values": removed, "valid_pixels": valid_count}
+
+
 def validate_raster(path: Path, record: dict, aoi_wkt: str) -> dict:
     """Check retained values, source identity, CRS and actual AOI membership."""
     import numpy as np

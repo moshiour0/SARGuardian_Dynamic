@@ -164,7 +164,10 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
           <button type="button" className="demo-button danger-button" disabled={busy} onClick={() => void cancel()}>{busy ? 'Cancelling…' : 'Cancel task'}</button>
           <button type="button" className="investigate-button" disabled={busy} onClick={() => setShowResubmitConfirmation(true)}>Refresh task</button>
         </div>}
-        {job.state === 'failed' && <button type="button" className="investigate-button" disabled={busy} onClick={() => void retryFailed()}>{busy ? 'Retrying…' : 'Retry task'}</button>}
+        {job.state === 'failed' && <div className="displacement-task-actions">
+          <button type="button" className="investigate-button" disabled={busy} onClick={() => void retryFailed()}>{busy ? 'Retrying…' : 'Retry task'}</button>
+          <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
+        </div>}
         <ScientificResults job={job} user={user} />
       </section>}
 

@@ -22,7 +22,7 @@ from uuid import UUID
 from . import catalog
 from .geometry import processing_fingerprint, validate_wkt
 from .validation import (ValidationError, create_raster_preview, inventory_hdf5,
-                         retain_quality_raster, sha256_file as validated_sha256,
+                         enforce_retention_aoi_mask, retain_quality_raster, sha256_file as validated_sha256,
                          validate_raster, write_raster_summary)
 
 SCIENCE_REPOSITORY = "moshiour0/SARGuardian"
@@ -343,7 +343,9 @@ def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, g
         quality_exports = retain_quality_raster(result, product, output_root)
         validation_reports = []
         for export_path in [*exports, *quality_exports]:
+            retained_mask = enforce_retention_aoi_mask(export_path, aoi_wkt or os.environ.get("SARGUARDIAN_AOI_WKT", ""))
             validation = validate_raster(export_path, record, aoi_wkt or os.environ.get("SARGUARDIAN_AOI_WKT", ""))
+            validation["retention_aoi_mask"] = retained_mask
             report_path = export_path.with_suffix(".validation.json")
             report_path.write_text(json.dumps(validation, indent=2, sort_keys=True), encoding="utf-8")
             validation_reports.append(report_path)

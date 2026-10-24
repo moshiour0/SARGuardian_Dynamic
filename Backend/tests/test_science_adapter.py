@@ -213,6 +213,7 @@ def test_adapter_retains_raw_data_until_remote_storage_cleanup_gate(tmp_path: Pa
     monkeypatch.setattr(adapter, "_load_science_modules", lambda _root, wkt: (Acquisition(), Gunw(), SimpleNamespace()))
     monkeypatch.setattr(adapter.catalog, "discover", lambda *_args, **_kwargs: {"selected": [record("2026-10-01", "2026-10-13")], "excluded": [], "complete": True})
     monkeypatch.setattr(adapter, "inventory_hdf5", lambda raw, rec: {"sha256": adapter.sha256_file(raw), "bytes": raw.stat().st_size})
+    monkeypatch.setattr(adapter, "enforce_retention_aoi_mask", lambda *_args: {"status": "PASS", "removed_finite_values": 0, "valid_pixels": 9})
     monkeypatch.setattr(adapter, "validate_raster", lambda *_args: {"status": "PASS"})
     monkeypatch.setattr(adapter, "retain_quality_raster", lambda *_args: [])
     def write_stats(_exports, _record, output):

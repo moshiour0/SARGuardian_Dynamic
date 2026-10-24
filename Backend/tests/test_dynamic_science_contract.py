@@ -10,6 +10,7 @@ import pytest
 from science_adapter import catalog
 from science_adapter.geometry import processing_fingerprint, validate_wkt
 from science_adapter.run_displacement import AdapterError, cleanup_after_verified_storage
+from science_adapter.validation import enforce_retention_aoi_mask
 
 
 WKT = "POLYGON((85 27, 85.01 27, 85 27.01, 85 27))"
@@ -54,6 +55,23 @@ def test_catalog_rejects_incomplete_result_sets() -> None:
         catalog.normalize_payload([{}] * catalog.CATALOG_LIMIT)
     with pytest.raises(catalog.CatalogError, match="paginated"):
         catalog.normalize_payload({"results": [], "nextPageToken": "more"})
+
+
+def test_retained_raster_removes_values_outside_the_custom_polygon(tmp_path: Path) -> None:
+    import numpy as np
+    import rasterio
+    from rasterio.transform import Affine
+
+    path = tmp_path / "aoi-window.tif"
+    with rasterio.open(path, "w", driver="GTiff", height=2, width=2, count=1,
+                       dtype="float32", crs="EPSG:4326", transform=Affine(.5, 0, 0, 0, -.5, 1), nodata=np.nan) as dst:
+        dst.write(np.ones((1, 2, 2), dtype="float32"))
+    receipt = enforce_retention_aoi_mask(path, "POLYGON((0 0, .6 0, 0 .6, 0 0))")
+    with rasterio.open(path) as src:
+        data = src.read(1)
+        assert int(np.isfinite(data).sum()) == 1
+        assert src.tags()["retention_aoi_mask_enforced"] == "true"
+    assert receipt == {"status": "PASS", "removed_finite_values": 3, "valid_pixels": 1}
 
 
 def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Path) -> None:
