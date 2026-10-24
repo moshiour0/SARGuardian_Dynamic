@@ -183,9 +183,9 @@ def discover(aoi_wkt: str, start: date, end: date, *, product_type: str = "BOTH"
                       "intersectsWith": aoi_wkt, "start": "2024-01-01T00:00:00Z",
                       "end": f"{end.isoformat()}T23:59:59Z", "output": "geojson", "maxResults": CATALOG_LIMIT}
             rows = None
-            for attempt in range(3):
+            for attempt in range(2):
                 try:
-                    response = client.get(ASF_API, params=params, timeout=(20, 120))
+                    response = client.get(ASF_API, params=params, timeout=(10, 30))
                     try:
                         response.raise_for_status()
                         rows = normalize_payload(response.json())
@@ -193,9 +193,9 @@ def discover(aoi_wkt: str, start: date, end: date, *, product_type: str = "BOTH"
                         response.close()
                     break
                 except (requests.RequestException, ValueError):
-                    if attempt == 2:
-                        raise CatalogError("ASF catalog query failed after three attempts; discovery is incomplete.") from None
-                    sleep(2 ** attempt)
+                    if attempt == 1:
+                        raise CatalogError("ASF catalog query failed after two bounded attempts; discovery is incomplete.") from None
+                    sleep(1)
             queries.append({"family": family, "maturity": maturity, "count": len(rows), "parameters": params})
             for row in rows:
                 record = normalize_record(row, family, maturity)
@@ -211,6 +211,7 @@ def discover(aoi_wkt: str, start: date, end: date, *, product_type: str = "BOTH"
                     excluded.append({"granule": record["granule"], "reason": "OUTSIDE_REQUESTED_ACQUISITION_WINDOW"})
     selected, variants = deduplicate(records)
     eligible_count = len(selected)
+    eligible_counts = {family: sum(record["productType"] == family for record in selected) for family in ("GUNW", "GOFF")}
     if processing_profile == "validation-pilot":
         chosen = {max((r for r in selected if r["productType"] == f), key=lambda r: (r["secondary"], r["granule"]))["granule"]
                   for f in families if any(r["productType"] == f for r in selected)}
@@ -219,7 +220,9 @@ def discover(aoi_wkt: str, start: date, end: date, *, product_type: str = "BOTH"
     if len(selected) > max_products:
         raise CatalogError(f"Selected product count exceeds {max_products}; narrow the AOI/date window.")
     missing = [f for f in families if not any(r["productType"] == f for r in selected)]
+    selected_counts = {family: sum(record["productType"] == family for record in selected) for family in ("GUNW", "GOFF")}
     return {"complete": True, "queries": queries, "selected": selected,
-            "eligible_product_count": eligible_count, "excluded": excluded + variants,
+            "eligible_product_count": eligible_count, "eligible_product_counts": eligible_counts,
+            "selected_product_counts": selected_counts, "excluded": excluded + variants,
             "variant_policy": VARIANT_POLICY, "unavailable_families": missing,
             "warnings": [f"NO_ELIGIBLE_{f}_PRODUCTS" for f in missing]}

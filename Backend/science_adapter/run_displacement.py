@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import importlib
 import json
 import logging
@@ -51,6 +52,7 @@ class JobInput:
     retention_mode: str = "derived-only"
     processing_profile: str = "validation-pilot"
     stream_upload: bool = False
+    report_progress: bool = False
 
 
 def sha256_file(path: Path) -> str:
@@ -164,24 +166,63 @@ def _install_earthdata_token_session(acquisition: Any) -> None:
         return
     try:
         import asf_search as asf
+        import requests
         from requests.auth import HTTPBasicAuth
     except ImportError as exc:  # pragma: no cover - workflow installs this dependency
         raise AdapterError("The pinned ASF client is unavailable for Earthdata token authentication.") from exc
 
+    cached_session: Any | None = None
+
+    def bound_network_session(session: Any) -> Any:
+        # The upstream downloader omits a timeout on its streaming GET.  A
+        # read timeout is an idle-socket limit, so healthy multi-GB transfers
+        # continue while a dead connection is bounded.
+        source_request = getattr(session, "request", None)
+        if callable(source_request):
+            def request(method: str, url: str, **kwargs: Any) -> Any:
+                kwargs.setdefault("timeout", (10, 120))
+                return source_request(method, url, **kwargs)
+            session.request = request
+        return session
+
     def build_session() -> Any:
+        nonlocal cached_session
+        if cached_session is not None:
+            return cached_session
         if username and password:
             session = asf.ASFSession()
+            response: Any | None = None
             try:
-                session.auth = HTTPBasicAuth(username, password)
-                access_token = session._get_urs_access_token()
-            except Exception as exc:
-                raise AdapterError("Earthdata username/password authentication failed.") from exc
+                # asf-search's private token helper does not set a request
+                # timeout.  Call the same EDL endpoint explicitly so an
+                # unavailable auth service cannot stall every retry for
+                # minutes.
+                response = session.post(
+                    f"https://{session.edl_host}/api/users/find_or_create_token",
+                    auth=HTTPBasicAuth(username, password), timeout=(10, 20),
+                )
+                response.raise_for_status()
+                token_payload = response.json()
+                access_token = token_payload.get("access_token") if isinstance(token_payload, dict) else None
+                if not isinstance(access_token, str) or not access_token:
+                    raise AdapterError("Earthdata authentication returned no access token.")
+            except requests.Timeout as exc:
+                raise AdapterError("Earthdata authentication timed out after 20 seconds.") from exc
+            except requests.HTTPError as exc:
+                raise AdapterError("Earthdata username/password authentication was rejected.") from exc
+            except requests.RequestException as exc:
+                raise AdapterError("Earthdata authentication service is unavailable.") from exc
+            except ValueError as exc:
+                raise AdapterError("Earthdata authentication returned an invalid response.") from exc
             finally:
-                session.auth = None
+                if response is not None:
+                    response.close()
             session._update_edl_token(access_token)
-            return session
+            cached_session = bound_network_session(session)
+            return cached_session
         try:
-            return asf.ASFSession().auth_with_token(token)
+            cached_session = bound_network_session(asf.ASFSession().auth_with_token(token))
+            return cached_session
         except Exception as exc:
             # The upstream client uses this exact safe message for a bad EDL
             # token.  Do not include exception data that could contain a token.
@@ -300,18 +341,74 @@ def _download_with_retry(acquisition: Any, record: dict[str, Any], raw: Path, wo
     missing = [key for key in required if record.get(key) in (None, "")]
     if missing:
         raise AdapterError(f"Selected catalog record is missing downloader field(s): {', '.join(missing)}.")
-    for attempt in range(1, 4):
+    max_attempts = 2
+    last_error: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
         try:
             if raw.exists():
                 raw.unlink()
             acquisition.download([record["productType"]], [record])
             if raw.is_file() and raw.stat().st_size > 0:
                 return
+        except AdapterError:
+            # Authentication/configuration failures cannot improve by
+            # repeating the exact request, so fail immediately.
+            raise
         except Exception as exc:
-            if attempt == 3:
-                raise AdapterError("Download failed after three bounded attempts.") from exc
-        write_stage(work_dir, "download_retry", granule=record["granule"], attempt=attempt)
-    raise AdapterError("Downloaded file was missing or empty.")
+            last_error = exc
+        if attempt < max_attempts:
+            write_stage(work_dir, "download_retry", granule=record["granule"], attempt=attempt,
+                        next_attempt=attempt + 1, error_type=type(last_error).__name__ if last_error else "empty_download")
+    if last_error is not None:
+        raise AdapterError("Download failed after two bounded attempts.") from last_error
+    raise AdapterError("Downloaded file was missing or empty after two bounded attempts.")
+
+
+def _discovery_progress_summary(discovery: dict[str, Any]) -> dict[str, Any]:
+    eligible = discovery.get("eligible_product_counts")
+    selected = discovery.get("selected_product_counts")
+    if not isinstance(eligible, dict) or not isinstance(selected, dict):
+        raise AdapterError("Product discovery did not provide per-family counts.")
+    return {
+        "schema_version": 2,
+        "catalog_granule_counts": {family: int(eligible.get(family, 0)) for family in sorted(PRODUCT_TYPES)},
+        "selected_granule_counts": {family: int(selected.get(family, 0)) for family in sorted(PRODUCT_TYPES)},
+    }
+
+
+def _report_discovery_progress(job: JobInput, discovery: dict[str, Any]) -> None:
+    if not job.report_progress:
+        return
+    callback_url = os.getenv("CALLBACK_URL", "").rstrip("/")
+    callback_secret = os.getenv("CALLBACK_SECRET", "")
+    request_fingerprint = os.getenv("REQUEST_FINGERPRINT", "")
+    run_id = os.getenv("GITHUB_RUN_ID", "")
+    repository = os.getenv("GITHUB_REPOSITORY", "")
+    server_url = os.getenv("GITHUB_SERVER_URL", "https://github.com").rstrip("/")
+    if not all((callback_url, callback_secret, request_fingerprint, run_id, repository)):
+        raise AdapterError("Worker progress callback configuration is incomplete.")
+    payload = {
+        "state": "running", "stage": "products_discovered", "sequence": 3,
+        "github_run_id": run_id, "github_run_url": f"{server_url}/{repository}/actions/runs/{run_id}",
+        "job_id": job.job_id, "contract_version": 2, "request_fingerprint": request_fingerprint,
+        "result_summary": _discovery_progress_summary(discovery),
+    }
+    body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signature = "sha256=" + hmac.new(callback_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    try:
+        import requests
+        response = requests.post(
+            f"{callback_url}/api/displacement-jobs/{job.job_id}/callback", data=body,
+            headers={"Content-Type": "application/json", "X-SARGuardian-Signature": signature},
+            timeout=(10, 30),
+        )
+        try:
+            response.raise_for_status()
+        finally:
+            response.close()
+    except requests.RequestException as exc:
+        raise AdapterError("Could not report discovered product counts to the job status service.") from exc
+    (job.work_dir / "discovery-callback-ack").touch()
 
 
 def process_record(record: dict[str, Any], science_root: Path, work_dir: Path, gunw: Any, goff: Any, aoi_wkt: str | None = None) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -400,6 +497,7 @@ def run_job(job: JobInput) -> dict[str, Any]:
     write_stage(job.work_dir, "discovering_products", start_date=str(job.start_date), end_date=str(job.end_date))
     discovery = catalog.discover(aoi.wkt, job.start_date, job.end_date, product_type=job.product_type,
                                  acquisition_window=job.acquisition_window, processing_profile=job.processing_profile)
+    _report_discovery_progress(job, discovery)
     selected = discovery["selected"]
     if not selected:
         raise AdapterError("No eligible GUNW or GOFF products have both acquisitions inside the requested date window.")
@@ -531,13 +629,14 @@ def main() -> int:
     parser.add_argument("--processing-profile", choices=("validation-pilot", "full-aoi"), default="validation-pilot")
     parser.add_argument("--cleanup-after-verified-storage", action="store_true")
     parser.add_argument("--stream-upload", action="store_true")
+    parser.add_argument("--report-progress", action="store_true")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         if args.cleanup_after_verified_storage:
             cleanup_after_verified_storage(args.work_dir, args.science_root)
         else:
-            run_job(JobInput(args.job_id, args.aoi_wkt, args.start_date, args.end_date, args.science_root.resolve(), args.work_dir.resolve(), args.max_download_gib, args.product_type, args.acquisition_window, args.retention_mode, args.processing_profile, args.stream_upload))
+            run_job(JobInput(args.job_id, args.aoi_wkt, args.start_date, args.end_date, args.science_root.resolve(), args.work_dir.resolve(), args.max_download_gib, args.product_type, args.acquisition_window, args.retention_mode, args.processing_profile, args.stream_upload, args.report_progress))
     except (AdapterError, ValueError) as exc:
         logger.error("%s", exc)
         return 1

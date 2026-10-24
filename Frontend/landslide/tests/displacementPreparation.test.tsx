@@ -62,5 +62,15 @@ describe('displacement preparation route', () => {
     expect(html).toContain('Retry task');
     expect(html).toContain('Go to map');
     expect(html).not.toContain('Start displacement processing');
+
+    const runningWithWorkerCounts = { ...failedJob, state: 'running', stage: 'products_discovered', result_summary: {
+      catalog_granule_counts: { GUNW: 8, GOFF: 5 }, selected_granule_counts: { GUNW: 1, GOFF: 1 },
+    } } as const;
+    const runningHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} busy={false}
+      clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
+      onRetry={() => {}} onBack={() => {}} user={user} />);
+    expect(runningHtml).toContain('>8<');
+    expect(runningHtml).toContain('>5<');
+    expect(runningHtml).toContain('Worker discovery');
   });
 });

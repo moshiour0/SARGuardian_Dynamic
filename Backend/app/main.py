@@ -571,6 +571,16 @@ async def update_displacement_job_from_worker(job_id: UUID, request: Request) ->
                 or summary["storage_verification"].get("status") != "PASS"
                 or not _valid_private_artifacts(summary.get("artifacts"))):
             raise HTTPException(status_code=409, detail="Version-2 success requires a validated scientific result contract.")
+    if target == JobState.RUNNING and payload.result_summary is not None:
+        summary = payload.result_summary
+        counts = summary.get("catalog_granule_counts") if isinstance(summary, dict) else None
+        selected_counts = summary.get("selected_granule_counts") if isinstance(summary, dict) else None
+        valid_counts = lambda value: isinstance(value, dict) and set(value) == {"GUNW", "GOFF"} and all(
+            isinstance(value[family], int) and not isinstance(value[family], bool) and 0 <= value[family] <= 10_000
+            for family in ("GUNW", "GOFF")
+        )
+        if summary.get("schema_version") != 2 or not valid_counts(counts) or not valid_counts(selected_counts):
+            raise HTTPException(status_code=409, detail="Worker progress summary contains invalid product counts.")
     allowed = {
         (JobState.DISPATCHING, JobState.RUNNING), (JobState.DISPATCHING, JobState.FAILED),
         (JobState.RUNNING, JobState.RUNNING), (JobState.RUNNING, JobState.SUCCEEDED), (JobState.RUNNING, JobState.FAILED),
@@ -578,11 +588,13 @@ async def update_displacement_job_from_worker(job_id: UUID, request: Request) ->
     if (current, target) not in allowed:
         raise HTTPException(status_code=409, detail="Worker callback requested an invalid state transition.")
     try:
+        retained_summary = (payload.result_summary if target in {JobState.RUNNING, JobState.SUCCEEDED}
+                            and payload.result_summary is not None else record.get("result_summary"))
         updated = store.update_displacement_job(job_id, {
             "state": target.value, "github_run_id": payload.github_run_id,
             "github_run_url": payload.github_run_url, "error_code": payload.error_code if target == JobState.FAILED else None,
             "error_message": payload.error_message if target == JobState.FAILED else None, "callback_sequence": payload.sequence,
-            "stage": payload.stage, "result_summary": payload.result_summary if target == JobState.SUCCEEDED else None,
+            "stage": payload.stage, "result_summary": retained_summary,
             "artifact_url": payload.artifact_url if target == JobState.SUCCEEDED else None,
         }, expected_state=current.value, expected_sequence=stored_sequence)
     except PersistenceConflictError:

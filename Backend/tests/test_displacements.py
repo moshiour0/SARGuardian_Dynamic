@@ -215,6 +215,29 @@ def test_ordered_worker_callbacks_preserve_stage_and_validated_result_summary(mo
     assert store.row["result_summary"]["selected_product_count"] == 1
 
 
+def test_running_discovery_counts_remain_visible_when_the_worker_fails(monkeypatch) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    created = api.post("/api/displacement-jobs", json=payload()).json()
+    monkeypatch.setattr(main_module, "get_settings", lambda: type("Settings", (), {"displacement_callback_secret": "test-secret"})())
+
+    def callback(payload_value: dict):
+        body = json.dumps(payload_value).encode()
+        signature = "sha256=" + hmac.new(b"test-secret", body, hashlib.sha256).hexdigest()
+        return api.post(f"/api/displacement-jobs/{created['id']}/callback", content=body,
+                        headers={"Content-Type": "application/json", "X-SARGuardian-Signature": signature})
+
+    assert callback({"state": "running", "stage": "initializing", "sequence": 1, "github_run_id": "123"}).status_code == 200
+    assert callback({"state": "running", "stage": "science_processing", "sequence": 2, "github_run_id": "123"}).status_code == 200
+    progress = {"schema_version": 2, "catalog_granule_counts": {"GUNW": 8, "GOFF": 5},
+                "selected_granule_counts": {"GUNW": 1, "GOFF": 1}}
+    assert callback({"state": "running", "stage": "products_discovered", "sequence": 3,
+                     "github_run_id": "123", "result_summary": progress}).status_code == 200
+    assert callback({"state": "failed", "stage": "failed", "sequence": 4,
+                     "github_run_id": "123", "error_message": "Worker failed."}).status_code == 200
+    assert store.row and store.row["result_summary"] == progress
+
+
 def test_version_two_callback_requires_bound_fingerprint_and_private_storage_evidence(monkeypatch) -> None:
     store = DisplacementStore()
     api = client(monkeypatch, store)
@@ -414,3 +437,5 @@ def test_displacement_workflow_initializes_runner_workspace_in_a_step() -> None:
     assert "${RUNNER_TEMP}/sarguardian-displacement-${JOB_ID}" in workflow
     assert "EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}" in workflow
     assert 'if [ -z "$EARTHDATA_TOKEN" ]; then' in workflow
+    assert "--report-progress" in workflow
+    assert "discovery-callback-ack" in workflow

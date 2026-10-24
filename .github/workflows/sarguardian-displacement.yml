@@ -157,7 +157,7 @@ jobs:
             --work-dir "$SARGUARDIAN_WORK_DIR" \
             --max-download-gib "${SARGUARDIAN_MAX_DOWNLOAD_GIB:-20}" \
             --product-type "$PRODUCT_TYPE" --acquisition-window "$ACQUISITION_WINDOW" \
-            --retention-mode "$RETENTION_MODE" --processing-profile "$PROCESSING_PROFILE" --stream-upload
+            --retention-mode "$RETENTION_MODE" --processing-profile "$PROCESSING_PROFILE" --stream-upload --report-progress
           test -s "$SARGUARDIAN_WORK_DIR/result-manifest.json"
           PYTHONPATH="$GITHUB_WORKSPACE/Backend" python - <<'PY'
           import hashlib
@@ -241,7 +241,7 @@ jobs:
             code=GITHUB_ACTIONS_WORKER_FAILED
             message='The GitHub Actions science workflow did not complete successfully.'
           fi
-          if [ -f "$SARGUARDIAN_WORK_DIR/processing-callback-ack" ]; then sequence=3; elif [ -f "$SARGUARDIAN_WORK_DIR/running-callback-ack" ]; then sequence=2; else sequence=1; fi
+          if [ -f "$SARGUARDIAN_WORK_DIR/discovery-callback-ack" ]; then sequence=4; elif [ -f "$SARGUARDIAN_WORK_DIR/processing-callback-ack" ]; then sequence=3; elif [ -f "$SARGUARDIAN_WORK_DIR/running-callback-ack" ]; then sequence=2; else sequence=1; fi
           if [ "$state" = succeeded ]; then
             summary="$(PYTHONPATH="$GITHUB_WORKSPACE/Backend" python - <<'PY'
           import json, os

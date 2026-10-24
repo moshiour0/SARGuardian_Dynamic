@@ -133,15 +133,39 @@ def test_adapter_prefers_an_explicit_earthdata_token_for_nisar_products(monkeypa
     assert seen["token"] == "test-edl-token"
 
 
-def test_adapter_prefers_validated_earthdata_credentials_over_a_federated_token(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_adapter_bounds_upstream_requests_that_omit_a_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
     class Session:
-        auth = None
+        def auth_with_token(self, _token): return self
+        def request(self, method, url, **kwargs):
+            seen["request"] = (method, url, kwargs)
+            return "response"
 
-        def _get_urs_access_token(self):
-            seen["auth"] = self.auth
-            return "access-token"
+    acquisition = SimpleNamespace()
+    monkeypatch.setenv("EARTHDATA_TOKEN", "test-edl-token")
+    monkeypatch.setitem(sys.modules, "asf_search", SimpleNamespace(ASFSession=Session))
+    adapter._install_earthdata_token_session(acquisition)
+
+    session = acquisition.build_session()
+    assert session.request("GET", "https://example.test/product.h5") == "response"
+    assert seen["request"][2]["timeout"] == (10, 120)
+
+
+def test_adapter_prefers_validated_earthdata_credentials_over_a_federated_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {"access_token": "access-token"}
+        def close(self): seen["closed"] = True
+
+    class Session:
+        edl_host = "urs.earthdata.nasa.gov"
+
+        def post(self, url, **kwargs):
+            seen["post"] = (url, kwargs)
+            return Response()
 
         def _update_edl_token(self, token):
             seen["access_token"] = token
@@ -157,11 +181,40 @@ def test_adapter_prefers_validated_earthdata_credentials_over_a_federated_token(
     adapter._install_earthdata_token_session(acquisition)
 
     session = acquisition.build_session()
+    cached = acquisition.build_session()
 
     assert isinstance(session, Session)
-    assert seen["auth"].username == "edl-user"
+    assert cached is session
+    assert seen["post"][0] == "https://urs.earthdata.nasa.gov/api/users/find_or_create_token"
+    assert seen["post"][1]["auth"].username == "edl-user"
+    assert seen["post"][1]["timeout"] == (10, 20)
     assert seen["access_token"] == "access-token"
-    assert session.auth is None
+    assert seen["closed"] is True
+
+
+def test_adapter_does_not_retry_a_non_transient_authentication_failure(tmp_path: Path) -> None:
+    calls = 0
+
+    class Acquisition:
+        def download(self, *_args):
+            nonlocal calls
+            calls += 1
+            raise adapter.AdapterError("Earthdata authentication timed out after 20 seconds.")
+
+    with pytest.raises(adapter.AdapterError, match="timed out"):
+        adapter._download_with_retry(Acquisition(), record("2026-10-01", "2026-10-13"), tmp_path / "raw.h5", tmp_path)
+    assert calls == 1
+
+
+def test_discovery_progress_summary_keeps_found_and_selected_family_counts() -> None:
+    assert adapter._discovery_progress_summary({
+        "eligible_product_counts": {"GUNW": 8, "GOFF": 5},
+        "selected_product_counts": {"GUNW": 1, "GOFF": 1},
+    }) == {
+        "schema_version": 2,
+        "catalog_granule_counts": {"GOFF": 5, "GUNW": 8},
+        "selected_granule_counts": {"GOFF": 1, "GUNW": 1},
+    }
 
 
 def test_adapter_reports_a_rejected_earthdata_token_without_echoing_it(monkeypatch: pytest.MonkeyPatch) -> None:

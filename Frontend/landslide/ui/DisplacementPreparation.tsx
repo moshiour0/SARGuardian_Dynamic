@@ -18,12 +18,19 @@ const noopTaskActivityChange = () => {};
 
 function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   const products = job.result_summary?.products;
-  if (!Array.isArray(products)) return null;
-  return {
-    GUNW: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GUNW').length,
-    GOFF: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GOFF').length,
-    source: 'processed-results',
-  };
+  if (Array.isArray(products)) return {
+      GUNW: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GUNW').length,
+      GOFF: products.filter((product) => product && typeof product === 'object' && (product as Record<string, unknown>).product_type === 'GOFF').length,
+      source: 'processed-results',
+    };
+  const discovered = job.result_summary?.catalog_granule_counts;
+  if (discovered && typeof discovered === 'object') {
+    const counts = discovered as Record<string, unknown>;
+    if (Number.isInteger(counts.GUNW) && Number.isInteger(counts.GOFF)) {
+      return { GUNW: counts.GUNW as number, GOFF: counts.GOFF as number, source: 'worker-discovery' };
+    }
+  }
+  return null;
 }
 
 export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCancel, onRefresh, onRetry, onBack, user }: {
@@ -49,7 +56,7 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
       <div><span>GUNW granules</span><strong>{counts.GUNW}</strong></div>
       <div><span>GOFF granules</span><strong>{counts.GOFF}</strong></div>
       <div><span>Total granules</span><strong>{counts.GUNW + counts.GOFF}</strong></div>
-      <div><span>Count source</span><strong>{counts.source === 'processed-results' ? 'Processed results' : 'ASF catalogue preflight'}</strong></div>
+      <div><span>Count source</span><strong>{counts.source === 'processed-results' ? 'Processed results' : counts.source === 'worker-discovery' ? 'Worker discovery' : 'ASF catalogue preflight'}</strong></div>
     </div>}
     {counts?.source === 'catalog-preflight' && <p className="catalog-notice">Catalogue matches for this AOI and date window. A validation pilot may process a smaller eligible subset.</p>}
     {job.error_message && <p role="alert">{job.error_message}</p>}

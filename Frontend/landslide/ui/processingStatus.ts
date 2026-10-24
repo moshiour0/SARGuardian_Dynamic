@@ -3,7 +3,7 @@ import type { CatalogProduct, ProcessingJobState } from '../../src/api/catalog';
 const activeStates = new Set<ProcessingJobState>(['queued', 'dispatching', 'running']);
 
 export const ELAPSED_TICK_MS = 1000;
-export type GranuleCounts = { GUNW: number; GOFF: number; source: 'catalog-preflight' | 'processed-results' };
+export type GranuleCounts = { GUNW: number; GOFF: number; source: 'catalog-preflight' | 'worker-discovery' | 'processed-results' };
 
 export function countCatalogGranules(products: CatalogProduct[]): GranuleCounts {
   return {
