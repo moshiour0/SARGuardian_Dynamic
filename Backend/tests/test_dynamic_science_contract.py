@@ -42,6 +42,13 @@ def test_catalog_identity_date_policy_and_variant_release_selection() -> None:
     assert excluded[0]["reason"] == "SUPERSEDED_PROCESSING_RELEASE"
 
 
+def test_catalog_identity_supplies_the_pinned_downloader_contract() -> None:
+    identity = catalog.parse_identity(NAME)
+    # The upstream downloader logs this legacy ``path`` field before calling
+    # ASF.  A dynamic record must carry it as well as the clearer ``track``.
+    assert identity["path"] == identity["track"] == "098"
+
+
 def test_catalog_rejects_incomplete_result_sets() -> None:
     with pytest.raises(catalog.CatalogError, match="cap"):
         catalog.normalize_payload([{}] * catalog.CATALOG_LIMIT)

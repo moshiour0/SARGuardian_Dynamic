@@ -15,6 +15,7 @@ def record(reference: str, secondary: str, product: str = "GUNW", size_mb: float
     return {
         "productType": product, "reference": date.fromisoformat(reference), "secondary": date.fromisoformat(secondary),
         "url": f"https://example.test/NISAR_L2_PR_{product}_example.h5", "size_mb": size_mb, "granule": f"NISAR_L2_PR_{product}_example",
+        "direction": "A", "path": "098",
     }
 
 
@@ -102,6 +103,14 @@ def test_adapter_resolves_unknown_size_with_an_authenticated_head_request() -> N
     assert resolved[0]["size_mb"] == 3
     assert seen["request"][1] == {"allow_redirects": True, "timeout": 60}
     assert seen["closed"] is True
+
+
+def test_adapter_rejects_a_record_that_cannot_satisfy_the_pinned_downloader_contract(tmp_path: Path) -> None:
+    incomplete = record("2026-10-01", "2026-10-13")
+    del incomplete["direction"]
+    del incomplete["path"]
+    with pytest.raises(adapter.AdapterError, match=r"missing downloader field\(s\): direction, path"):
+        adapter._download_with_retry(SimpleNamespace(), incomplete, tmp_path / "raw.h5", tmp_path)
 
 
 def test_adapter_prefers_an_explicit_earthdata_token_for_nisar_products(monkeypatch: pytest.MonkeyPatch) -> None:

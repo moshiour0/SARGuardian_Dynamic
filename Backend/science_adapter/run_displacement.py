@@ -293,6 +293,13 @@ def _artifact(work_dir: Path, path: Path, kind: str, product: str | None = None)
 
 
 def _download_with_retry(acquisition: Any, record: dict[str, Any], raw: Path, work_dir: Path) -> None:
+    # ``nisar_acquisition.download`` logs these fields before it transfers a
+    # byte.  Check its public record contract up front: retrying a malformed
+    # record only hides an integration defect and burns runner time.
+    required = ("productType", "granule", "url", "direction", "path", "reference", "secondary")
+    missing = [key for key in required if record.get(key) in (None, "")]
+    if missing:
+        raise AdapterError(f"Selected catalog record is missing downloader field(s): {', '.join(missing)}.")
     for attempt in range(1, 4):
         try:
             if raw.exists():

@@ -51,7 +51,10 @@ def parse_identity(value: str) -> dict[str, Any]:
             "reference": stamps[0].date(), "secondary": stamps[2].date(),
             "reference_start": fields[11], "reference_end": fields[12],
             "secondary_start": fields[13], "secondary_end": fields[14],
-            "track": fields[5], "direction": fields[6], "frame": fields[7],
+            # The pinned downloader calls this orbit/track field ``path``.
+            # Keep both names so the discovery evidence remains explicit while
+            # satisfying the source reader/downloader contract.
+            "track": fields[5], "path": fields[5], "direction": fields[6], "frame": fields[7],
             "mode": fields[8:11], "crid": crid, "crid_maturity": mapped,
             "orbit_accuracy": fields[16], "coverage": fields[17], "version": fields[19]}
 
