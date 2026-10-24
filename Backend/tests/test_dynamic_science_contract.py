@@ -95,6 +95,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "uses: ./.github/workflows/sarguardian-aoi-wkt-dashboard.yml" in workflow
     assert "aoi_wkt: ${{ inputs.aoi_wkt }}" in workflow
     assert "date_filter_mode: ${{ inputs.acquisition_window }}" in workflow
+    assert "run_profile: full-aoi-baseline" in workflow
     assert "python tools/discover_aoi_products.py" in dashboard
     assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in dashboard
     assert "python science-source/src/gunw_reader.py" in worker

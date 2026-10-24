@@ -5,6 +5,7 @@ import { ScientificResults } from '../ui/ScientificResults';
 import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/processingStatus';
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
+import { DEFAULT_DISPLACEMENT_OPTIONS } from '../../src/api/catalog';
 
 describe('displacement preparation route', () => {
   const user = { getIdToken: vi.fn() } as never;
@@ -43,6 +44,10 @@ describe('displacement preparation route', () => {
   it('keeps a one-second age tick and renders failed recovery actions with granule counts', () => {
     expect(ELAPSED_TICK_MS).toBe(1000);
     expect(JOB_STATUS_POLL_MS).toBe(2000);
+    expect(DEFAULT_DISPLACEMENT_OPTIONS).toEqual({
+      product_type: 'BOTH', acquisition_window: 'secondary-acquisition-in-window',
+      retention_mode: 'full-lossless', processing_profile: 'full-aoi',
+    });
     expect(formatElapsed('2026-10-24T10:00:00Z', '2026-10-24T10:00:02Z', 'running', Date.parse('2026-10-24T10:00:03Z'))).toBe('0m 3s');
     expect(countCatalogGranules([
       { product_type: 'GUNW' }, { product_type: 'GOFF' }, { product_type: 'GUNW' },
@@ -65,7 +70,8 @@ describe('displacement preparation route', () => {
     expect(html).toContain('Go to map');
     expect(html).not.toContain('Start displacement processing');
 
-    const runningWithWorkerCounts = { ...failedJob, state: 'running', stage: 'products_discovered', result_summary: {
+    const runningWithWorkerCounts = { ...failedJob, state: 'running', stage: 'products_discovered',
+      github_run_url: 'https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123', result_summary: {
       catalog_granule_counts: { GUNW: 8, GOFF: 5 }, selected_granule_counts: { GUNW: 1, GOFF: 1 },
     } } as const;
     const runningHtml = renderToStaticMarkup(<DisplacementJobStatus job={runningWithWorkerCounts as never} busy={false}
@@ -74,6 +80,8 @@ describe('displacement preparation route', () => {
     expect(runningHtml).toContain('>8<');
     expect(runningHtml).toContain('>5<');
     expect(runningHtml).toContain('Worker discovery');
+    expect(runningHtml).toContain('View worker logs');
+    expect(runningHtml).toContain('https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123');
   });
 
   it('shows only one Drive-folder download action after successful processing', () => {

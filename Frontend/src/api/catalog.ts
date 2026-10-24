@@ -67,7 +67,7 @@ export type DisplacementProcessingOptions = {
 export const DEFAULT_DISPLACEMENT_OPTIONS: DisplacementProcessingOptions = {
   product_type: 'BOTH',
   acquisition_window: 'secondary-acquisition-in-window',
-  retention_mode: 'derived-only',
+  retention_mode: 'full-lossless',
   processing_profile: 'full-aoi',
 };
 

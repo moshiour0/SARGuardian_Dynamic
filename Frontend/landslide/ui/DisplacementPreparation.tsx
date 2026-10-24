@@ -17,6 +17,17 @@ const activeStates = new Set(['queued', 'dispatching', 'running']);
 const noopTaskActivityChange = () => {};
 export const JOB_STATUS_POLL_MS = 2000;
 
+function githubRunUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.username || url.password) return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
+
 function resultGranuleCounts(job: DisplacementJob): GranuleCounts | null {
   const products = job.result_summary?.products;
   if (Array.isArray(products)) return {
@@ -46,6 +57,7 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
 }) {
   const hasActiveJob = activeStates.has(job.state);
   const counts = resultGranuleCounts(job) || granuleCounts;
+  const workerUrl = githubRunUrl(job.github_run_url);
   return <section className="displacement-job-status" aria-live="polite">
     <h2>Processing status</h2>
     <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
@@ -58,7 +70,6 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
       <div><span>Total granules</span><strong>{counts.GUNW + counts.GOFF}</strong></div>
       <div><span>Count source</span><strong>{counts.source === 'processed-results' ? 'Processed results' : counts.source === 'worker-discovery' ? 'Worker discovery' : 'ASF catalogue preflight'}</strong></div>
     </div>}
-    {counts?.source === 'catalog-preflight' && <p className="catalog-notice">Catalogue matches for this AOI and date window. A validation pilot may process a smaller eligible subset.</p>}
     {job.error_message && <p role="alert">{job.error_message}</p>}
     {hasActiveJob && <div className="displacement-task-actions">
       <button type="button" className="demo-button danger-button" disabled={busy} onClick={onCancel}>{busy ? 'Cancelling…' : 'Cancel task'}</button>
@@ -68,6 +79,9 @@ export function DisplacementJobStatus({ job, busy, clock, granuleCounts, onCance
       <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{busy ? 'Retrying…' : 'Retry task'}</button>
       <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
     </div>}
+    {workerUrl && <p className="displacement-task-actions">
+      <a className="demo-button" href={workerUrl} target="_blank" rel="noreferrer">View worker logs</a>
+    </p>}
     <ScientificResults job={job} />
   </section>;
 }

@@ -31,10 +31,10 @@ The account-facing workflow calls the vendored dynamic-AOI streaming pipeline fr
 `moshiour0/SARGuardian-backend`. It pins `moshiour0/SARGuardian` at
 `10639a916c9829850775410b3ed7de62e527770d`, uses the submitted WKT polygon unchanged,
 queries ASF separately by family and BETA/PROVISIONAL maturity, and retains
-catalog/identity evidence. The default policy selects pairs by an in-window **secondary
-acquisition** date; an optional strict mode requires both dates in the window. Products
-run sequentially, with one raw download per execution and at most one receipt-gated
-product retry.
+catalog/identity evidence. Account jobs use both product families, select pairs by an
+in-window **secondary acquisition** date, process the complete eligible AOI baseline,
+and retain a full-lossless archive. Products run sequentially, with one raw download per
+execution and at most one receipt-gated product retry.
 
 Each product is validated against the requested AOI, processed by the original pinned
 GUNW/GOFF reader, uploaded to private Drive, and remotely verified before local raw data

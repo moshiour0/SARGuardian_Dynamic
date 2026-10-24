@@ -16,6 +16,7 @@ from .auth import get_current_user
 from .config import SettingsError, get_settings, validate_production_settings
 from .jobs import CreateJobRequest, JobResponse, JobState
 from .displacements import (
+    ACCOUNT_PROCESSING_OPTIONS,
     PROCESSING_OPTION_DEFAULTS,
     CreateDisplacementJobRequest,
     DisplacementJobResponse,
@@ -324,6 +325,8 @@ def _validate_displacement_request(request: CreateDisplacementJobRequest) -> Non
         raise HTTPException(status_code=422, detail=f"Date range cannot exceed {MAX_DATE_WINDOW_DAYS} days.")
     if request.end_date > date.today():
         raise HTTPException(status_code=422, detail="end_date cannot be in the future.")
+    if any(getattr(request, name) != value for name, value in ACCOUNT_PROCESSING_OPTIONS.items()):
+        raise HTTPException(status_code=422, detail="Account displacement processing uses the fixed production processing contract.")
 
 
 def _create_and_dispatch_displacement_job(owner_uid: str, request: CreateDisplacementJobRequest, store) -> DisplacementJobResponse:
@@ -454,7 +457,7 @@ def cancel_displacement_job(job_id: UUID, user: dict = Depends(get_current_user)
 def resubmit_displacement_job(
     job_id: UUID, request: ResubmitDisplacementJobRequest, user: dict = Depends(get_current_user),
 ) -> DisplacementJobResponse:
-    """Retry a failed job or replace an active workflow from immutable stored inputs."""
+    """Retry a failed job or replace an active workflow for its stored AOI/date window."""
     owner_uid = _required_owner_uid(user)
     store = _require_store()
     try:
@@ -466,7 +469,8 @@ def resubmit_displacement_job(
 
     if current.get("state") == JobState.FAILED.value:
         # A failed job has no active worker to cancel. Its stored WKT and dates
-        # remain the sole source for a retry, preventing payload substitution.
+        # remain the sole source for a retry; current account processing options
+        # are fixed server-side.
         source = current
     elif current.get("state") in {JobState.DISPATCHING.value, JobState.RUNNING.value}:
         source = _cancel_active_displacement_job(owner_uid, job_id, store)
@@ -476,7 +480,7 @@ def resubmit_displacement_job(
     replacement = CreateDisplacementJobRequest(
         aoi_wkt=str(source["aoi_wkt"]), start_date=source["start_date"], end_date=source["end_date"],
         idempotency_key=request.idempotency_key,
-        **{name: source.get(name, default) for name, default in PROCESSING_OPTION_DEFAULTS.items()},
+        **ACCOUNT_PROCESSING_OPTIONS,
     )
     return _create_and_dispatch_displacement_job(owner_uid, replacement, store)
 
