@@ -112,11 +112,18 @@ def dispatch_workflow(settings: RuntimeSettings, job_id: UUID, request: CreateDi
     if not settings.displacement_actions_enabled:
         raise GitHubDispatchError("Displacement processing is not configured on this server.")
     endpoint = f"{settings.github_api_url}/repos/{settings.github_actions_repository}/actions/workflows/{settings.github_actions_workflow}/dispatches"
+    # Contract of moshiour0/SARGuardian-backend's sarguardian-aoi-wkt-dashboard.yml.
+    # The dashboard workflow deliberately names its acquisition/date/retention
+    # inputs differently from the account API. Keep this mapping explicit so we
+    # never send undeclared workflow_dispatch inputs (GitHub rejects those with 422).
     body = json.dumps({"ref": settings.github_actions_ref, "inputs": {
         "job_id": str(job_id), "aoi_wkt": request.aoi_wkt,
         "start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(),
         "callback_url": settings.public_api_url,
-        **{name: getattr(request, name) for name in PROCESSING_OPTION_DEFAULTS},
+        "request_fingerprint": request_fingerprint(request.model_dump()),
+        "date_filter_mode": request.acquisition_window,
+        "run_profile": "full-aoi-baseline" if request.processing_profile == "full-aoi" else "validation-pilot",
+        "retention_profile": request.retention_mode,
     }}).encode("utf-8")
     request_obj = Request(endpoint, data=body, method="POST", headers={
         "Accept": "application/vnd.github+json", "Authorization": f"Bearer {settings.github_actions_token}",
