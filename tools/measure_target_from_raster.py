@@ -41,7 +41,7 @@ def measure_target(
     latitude: float,
     *,
     radius_px: int = 3,
-    minimum_valid_pixels: int = 3,
+    minimum_valid_pixels: int = 6,
 ) -> dict[str, Any]:
     """Return local window statistics without interpreting them as a time series."""
     family = product_type.upper()
@@ -149,7 +149,7 @@ def main() -> int:
     parser.add_argument("--longitude", required=True, type=float)
     parser.add_argument("--latitude", required=True, type=float)
     parser.add_argument("--radius-px", type=int, default=3)
-    parser.add_argument("--minimum-valid-pixels", type=int, default=3)
+    parser.add_argument("--minimum-valid-pixels", type=int, default=6)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     try:
