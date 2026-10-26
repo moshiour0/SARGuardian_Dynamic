@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import hashlib
+from io import BytesIO
+from zipfile import ZipFile
+
 import pytest
 from fastapi.testclient import TestClient
 from uuid import uuid4
@@ -207,3 +211,128 @@ def test_production_requires_explicit_cors_origins(monkeypatch: pytest.MonkeyPat
     monkeypatch.delenv("CORS_ORIGINS", raising=False)
     with pytest.raises(RuntimeError, match="CORS_ORIGINS"):
         main_module._cors_origins()
+
+
+def _dashboard_zip() -> bytes:
+    buffer = BytesIO()
+    with ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "web-dashboard/index.html",
+            '<!doctype html><html><head></head><body><script src="./dashboard-data.js"></script>'
+            '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a></body></html>',
+        )
+        archive.writestr("web-dashboard/dashboard-data.js", "window.SARGUARDIAN_DASHBOARD={safe:true};")
+    return buffer.getvalue()
+
+
+def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_bundle(monkeypatch) -> None:
+    from uuid import uuid4
+
+    job_id = uuid4()
+    payload = _dashboard_zip()
+    artifact = {
+        "path": "aoi-derived-results.zip",
+        "kind": "aoi_derived_result_bundle",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
+        "drive_file_id": "private-drive-file-id",
+    }
+
+    class Store:
+        def get_displacement_job(self, owner_uid, requested_job_id):
+            assert requested_job_id == job_id
+            if owner_uid != "test-user":
+                return None
+            return {
+                "id": str(job_id),
+                "owner_uid": owner_uid,
+                "state": "succeeded",
+                "result_summary": {
+                    "web_dashboard": {"status": "PASS", "schema_version": "sarguardian-web-dashboard/1.0"},
+                    "artifacts": [artifact],
+                },
+            }
+
+    monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
+    monkeypatch.setattr(
+        main_module, "download_private_result",
+        lambda drive_id: ({"bytes": len(payload), "id": drive_id}, payload),
+    )
+
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert "window.SARGUARDIAN_DASHBOARD={safe:true};" in response.text
+    assert 'src="./dashboard-data.js"' not in response.text
+    assert "Content-Security-Policy" in response.text
+    assert "private-drive-file-id" not in response.text
+    assert "Processing report ↗" not in response.text
+
+
+def test_interactive_dashboard_rejects_unavailable_old_bundle_without_drive_download(monkeypatch) -> None:
+    from uuid import uuid4
+
+    job_id = uuid4()
+
+    class Store:
+        def get_displacement_job(self, owner_uid, requested_job_id):
+            return {
+                "id": str(job_id),
+                "state": "succeeded",
+                "result_summary": {
+                    "web_dashboard": {"status": "NOT_AVAILABLE"},
+                    "artifacts": [],
+                },
+            }
+
+    called = []
+    monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
+    monkeypatch.setattr(main_module, "download_private_result", lambda *_args: called.append(True))
+
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
+
+    assert response.status_code == 404
+    assert called == []
+
+
+def test_interactive_dashboard_rejects_drive_checksum_mismatch(monkeypatch) -> None:
+    from uuid import uuid4
+
+    job_id = uuid4()
+    payload = _dashboard_zip()
+    wrong_payload = b"not-the-verified-bundle"
+    artifact = {
+        "path": "aoi-derived-results.zip",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
+        "drive_file_id": "private-drive-file-id",
+    }
+
+    class Store:
+        def get_displacement_job(self, owner_uid, requested_job_id):
+            return {
+                "id": str(job_id),
+                "state": "succeeded",
+                "result_summary": {
+                    "web_dashboard": {"status": "PASS"},
+                    "artifacts": [artifact],
+                },
+            }
+
+    monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
+    monkeypatch.setattr(
+        main_module, "download_private_result",
+        lambda _drive_id: ({"bytes": len(wrong_payload)}, wrong_payload),
+    )
+
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
+
+    assert response.status_code == 409
+    assert "checksum" in response.json()["detail"]
+
+
+def test_interactive_dashboard_requires_authentication() -> None:
+    response = client.get(f"/api/displacement-jobs/{uuid4()}/dashboard")
+    assert response.status_code == 401
