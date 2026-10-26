@@ -43,10 +43,28 @@ describe('shared investigation selection', () => {
   it('creates the exact date/geometry payload for the current selection', () => {
     expect(prepareInvestigation(selection)).toEqual({ valid: true, payload: {
       aoi_wkt: polygonToWkt(selection.coordinates), start_date: selection.startDate, end_date: selection.endDate,
+      place_name: null, place_latitude: null, place_longitude: null, target_latitude: null, target_longitude: null,
     } });
   });
   it.each(['', '2026-02-30', '2026-1-01', 'invalid', '2026-10-24'])('rejects invalid or future end date %s', (endDate) => {
     expect(prepareInvestigation({ ...selection, endDate }).valid).toBe(false);
+  });
+  it('passes selected location context and only promotes an in-AOI point to measurement target', () => {
+    const inside = prepareInvestigation({ ...selection, place: { name: 'Himalaya Station', latitude: 27.7002, longitude: 85.3008 } });
+    expect(inside.valid).toBe(true);
+    if (inside.valid) {
+      expect(inside.payload.place_name).toBe('Himalaya Station');
+      expect(inside.payload.target_latitude).toBe(27.7002);
+      expect(inside.payload.target_longitude).toBe(85.3008);
+    }
+    const outside = prepareInvestigation({ ...selection, place: { name: 'Nearby town', latitude: 27.71, longitude: 85.30 } });
+    expect(outside.valid).toBe(true);
+    if (outside.valid) {
+      expect(outside.payload.place_name).toBe('Nearby town');
+      expect(outside.payload.place_latitude).toBe(27.71);
+      expect(outside.payload.target_latitude).toBeNull();
+      expect(outside.payload.target_longitude).toBeNull();
+    }
   });
   it('enforces ordering, maximum window, area and closure rules', () => {
     for (const change of [{ endDate: '2026-09-30' }, { startDate: '2026-01-01' }, { areaClosed: false }, { coordinates: [[0, 0], [20, 0], [20, 20]] as [number, number][] }]) {
