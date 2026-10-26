@@ -1,0 +1,6 @@
+# Production/backend dependencies plus libraries required by the backend regression tests.
+-r requirements.txt
+numpy>=1.26,<3
+h5py>=3.11,<4
+rasterio>=1.4,<2
+pyproj>=3.6,<4

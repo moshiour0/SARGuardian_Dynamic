@@ -38,7 +38,7 @@ That variable may contain either a modern opaque `sb_secret_...` key or a legacy
 as `Authorization: Bearer ...`; the Firebase ID token remains the separate client
 authentication credential.
 There is no in-memory fallback: missing values produce a safe configuration error. Apply
-`migrations/001_processing_jobs.sql` to the Supabase project before enabling job creation.
+`supabase/migrations/20261017143644_processing_jobs.sql` to the Supabase project before enabling job creation.
 Supabase does not automatically treat Firebase identities as Supabase Auth identities. The
 backend verifies Firebase first and filters every persistence operation by that verified UID;
 the SQL RLS policies are defense-in-depth for a future Supabase JWT integration.
@@ -96,7 +96,7 @@ or long-running process is required. Set `APP_ENV=production` and an explicit tr
 comma-separated `CORS_ORIGINS` value containing the final Vercel frontend origin. Also set
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `FIREBASE_SERVICE_ACCOUNT_JSON` in Vercel's
 server-side environment settings. Do not set `GOOGLE_APPLICATION_CREDENTIALS` to a Windows
-path on Vercel. Apply migrations in order through `004_scientific_request_contract.sql` before enabling dispatch. The Actions worker retains private, verified results and reports them through the existing owner-scoped displacement API; see [`../docs/DISPLACEMENT_ACTIONS.md`](../docs/DISPLACEMENT_ACTIONS.md) and [`../docs/CONTROLLED_LIVE_PILOT.md`](../docs/CONTROLLED_LIVE_PILOT.md).
+path on Vercel. Apply the timestamped SQL files in `supabase/migrations/` in ascending timestamp order through `20261024111404_scientific_request_contract.sql` before enabling dispatch. The Actions worker retains private, verified results and reports them through the existing owner-scoped displacement API; see [`../docs/DISPLACEMENT_ACTIONS.md`](../docs/DISPLACEMENT_ACTIONS.md) and [`../docs/CONTROLLED_LIVE_PILOT.md`](../docs/CONTROLLED_LIVE_PILOT.md).
 
 For the frontend project, use the Vite preset, root directory `Frontend/`, build command
 `npm run build`, and output directory `dist`. Set the public frontend variables documented in

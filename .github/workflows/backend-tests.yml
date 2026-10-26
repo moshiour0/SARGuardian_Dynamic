@@ -1,0 +1,63 @@
+name: Backend tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "Backend/**"
+      - "docs/DISPLACEMENT_ACTIONS.md"
+      - ".github/workflows/backend-tests.yml"
+  push:
+    branches:
+      - main
+      - fix/supabase-github-migrations
+    paths:
+      - "Backend/**"
+      - "docs/DISPLACEMENT_ACTIONS.md"
+      - ".github/workflows/backend-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: Backend/requirements-test.txt
+
+      - name: Install backend test dependencies
+        run: python -m pip install -r Backend/requirements-test.txt
+
+      - name: Validate canonical Supabase migration layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f Backend/supabase/config.toml
+          test -f Backend/supabase/migrations/20261017143644_processing_jobs.sql
+          test -f Backend/supabase/migrations/20261022203034_displacement_jobs.sql
+          test -f Backend/supabase/migrations/20261023141449_displacement_active_request_guard.sql
+          test -f Backend/supabase/migrations/20261024111404_scientific_request_contract.sql
+          test ! -e Backend/migrations/001_processing_jobs.sql
+          test ! -e Backend/migrations/002_displacement_jobs.sql
+          test ! -e Backend/migrations/003_displacement_active_request_guard.sql
+          test ! -e Backend/migrations/004_scientific_request_contract.sql
+          if git grep -n -F -e '001_processing_jobs.sql' -e '002_displacement_jobs.sql' -e '003_displacement_active_request_guard.sql' -e '004_scientific_request_contract.sql' -- . ':!.github/workflows/backend-tests.yml'; then
+            echo "Stale legacy migration filename reference found."
+            exit 1
+          fi
+
+      - name: Run backend test suite
+        working-directory: Backend
+        run: python -m pytest -q

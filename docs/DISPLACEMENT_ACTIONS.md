@@ -55,4 +55,4 @@ screening; it is not a common-reference time series or hazard forecast. Callback
 signed, ordered sequence numbers and bind the job ID plus request fingerprint. GitHub
 terminal success without the signed completion callback is recorded as failure.
 
-Run [002_displacement_jobs.sql](../Backend/migrations/002_displacement_jobs.sql) after the prior processing-job migration. Keep direct browser access revoked; the trusted backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.
+Run [20261022203034_displacement_jobs.sql](../Backend/supabase/migrations/20261022203034_displacement_jobs.sql) after the prior processing-job migration. Keep direct browser access revoked; the trusted backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.
