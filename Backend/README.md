@@ -138,9 +138,14 @@ is called. Results preserve actual ASF granule names, product types, dates, dire
 processing level, and size metadata where ASF provides them. Missing metadata remains absent.
 
 `POST /api/displacement-jobs` creates an authenticated durable processing request. It stores
-an immutable AOI/date/product/window/retention/profile snapshot, dispatches only when
-server-side Actions settings are enabled, and accepts completion only from the bound signed
-worker callback. Normal catalog preflight remains metadata-only.
+an immutable AOI/date/product/window/retention/profile snapshot plus selected place context and
+optional in-AOI target coordinates. The target is accepted only when its WGS84 point lies within
+the exact submitted polygon and is bound into the request fingerprint. Place context is not a
+measurement, and the target is not a stable reference point: cumulative time-series inversion
+remains blocked unless the science workflow proves a compatible common datum across the connected
+acquisition network. The workflow is dispatched only when server-side Actions settings are enabled,
+and completion is accepted only from the bound signed worker callback. Normal catalog preflight
+remains metadata-only.
 
 ## Tests
 
