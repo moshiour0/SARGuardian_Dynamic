@@ -1,11 +1,32 @@
 from __future__ import annotations
 
+import base64
+import json
 import logging
 from types import SimpleNamespace
 
 import pytest
 
 from app import persistence
+
+
+def _fake_legacy_key(role: str) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"HS256","typ":"JWT"}').decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps({"role": role}).encode()).decode().rstrip("=")
+    return f"{header}.{payload}.test-signature"
+
+
+def test_legacy_service_role_jwt_is_accepted() -> None:
+    assert persistence._validate_service_role_key(_fake_legacy_key("service_role")) is False
+
+
+def test_legacy_anon_jwt_is_rejected_as_server_persistence_key() -> None:
+    anon_key = _fake_legacy_key("anon")
+
+    with pytest.raises(persistence.PersistenceConfigurationError, match="without the service_role claim") as error:
+        persistence._validate_service_role_key(anon_key)
+
+    assert anon_key not in str(error.value)
 
 
 def test_modern_supabase_key_is_only_an_apikey_header() -> None:
