@@ -76,7 +76,9 @@ def _artifact_kind(name: str) -> str:
 
 
 def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
-    summary = _load_json(find_unique(dashboard_root, "aoi-run-summary.json"))
+    summary_path = find_unique(dashboard_root, "aoi-run-summary.json")
+    summary = _load_json(summary_path)
+    dashboard_dir = summary_path.parent
     report = _load_json(find_unique(dashboard_root, "aoi-processing-report.json"))
     receipt = _load_json(find_unique(dashboard_root, "drive-dashboard-upload-receipt.json"))
     # The result bundle now contains web-dashboard/manifest.json. The input
@@ -89,8 +91,8 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
     web_dashboard = summary.get("web_dashboard")
     if not isinstance(web_dashboard, dict):
         web_dashboard = {"status": "NOT_AVAILABLE"}
-    viewer_path = dashboard_root / "web-dashboard" / "index.html"
-    data_path = dashboard_root / "web-dashboard" / "dashboard-data.js"
+    viewer_path = dashboard_dir / "web-dashboard" / "index.html"
+    data_path = dashboard_dir / "web-dashboard" / "dashboard-data.js"
     if web_dashboard.get("status") == "PASS" and not (viewer_path.is_file() and data_path.is_file()):
         raise CallbackError("Dashboard receipt reports PASS but viewer files are missing from the uploaded workflow artifact.")
     products = report.get("products")
