@@ -326,11 +326,24 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
     dispatch_workflow(settings, UUID("11111111-1111-1111-1111-111111111111"), request)
     assert captured["url"].endswith("/repos/owner/repository/actions/workflows/workflow.yml/dispatches")
     assert captured["authorization"] == "Bearer server-token"
+    request_model = CreateDisplacementJobRequest(**payload())
+    from science_adapter.geometry import processing_fingerprint
+    expected_fingerprint = processing_fingerprint(
+        aoi_wkt=request_model.aoi_wkt,
+        start_date="2026-10-01",
+        end_date="2026-10-22",
+        product_type="BOTH",
+        acquisition_window="secondary-acquisition-in-window",
+        retention_mode="derived-only",
+        processing_profile="full-aoi",
+    )
     assert captured["body"]["inputs"] == {
         "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
         "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
-        "product_type": "BOTH", "acquisition_window": "secondary-acquisition-in-window",
-        "retention_mode": "derived-only", "processing_profile": "full-aoi",
+        "request_fingerprint": expected_fingerprint,
+        "date_filter_mode": "secondary-acquisition-in-window",
+        "run_profile": "full-aoi-baseline",
+        "retention_profile": "derived-only",
     }
 
 
