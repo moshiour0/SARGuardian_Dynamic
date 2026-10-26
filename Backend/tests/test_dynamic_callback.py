@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
-from science_adapter.dynamic_callback import callback_payload, discovery_summary, success_summary
+import pytest
+
+from science_adapter.dynamic_callback import (
+    CallbackError, callback_payload, discovery_summary, send_callback, success_summary,
+)
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -83,3 +89,68 @@ def test_callback_payload_is_deterministic_and_bound_to_the_job() -> None:
     assert decoded["contract_version"] == 2
     assert decoded["job_id"] == "11111111-1111-1111-1111-111111111111"
     assert decoded["result_summary"] == {"schema_version": 2}
+
+
+
+def test_send_callback_retries_transient_http_503_with_same_signed_payload(monkeypatch) -> None:
+    captured = []
+
+    class Response:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    def fake_urlopen(request, timeout):
+        headers = {name.lower(): value for name, value in request.header_items()}
+        captured.append({
+            "url": request.full_url,
+            "method": request.get_method(),
+            "body": request.data,
+            "signature": headers.get("x-sarguardian-signature"),
+            "timeout": timeout,
+        })
+        if len(captured) == 1:
+            raise HTTPError(
+                request.full_url, 503, "Service Unavailable", hdrs=None,
+                fp=BytesIO(b"temporary service error"),
+            )
+        return Response()
+
+    monkeypatch.setattr("science_adapter.dynamic_callback.urlopen", fake_urlopen)
+    monkeypatch.setattr("science_adapter.dynamic_callback.time.sleep", lambda _delay: None)
+
+    send_callback(
+        "https://api.example.test", "callback-secret",
+        "11111111-1111-1111-1111-111111111111", b'{"state":"running"}',
+    )
+
+    assert len(captured) == 2
+    assert captured[0] == captured[1]
+    assert captured[0]["method"] == "POST"
+    assert captured[0]["timeout"] == 30
+    assert captured[0]["signature"] and captured[0]["signature"].startswith("sha256=")
+
+
+def test_send_callback_does_not_retry_a_nontransient_contract_conflict(monkeypatch) -> None:
+    calls = []
+
+    def fake_urlopen(request, timeout):
+        calls.append(request.full_url)
+        raise HTTPError(
+            request.full_url, 409, "Conflict", hdrs=None, fp=BytesIO(b"sequence conflict"),
+        )
+
+    monkeypatch.setattr("science_adapter.dynamic_callback.urlopen", fake_urlopen)
+    monkeypatch.setattr("science_adapter.dynamic_callback.time.sleep", lambda _delay: None)
+
+    with pytest.raises(CallbackError, match="Could not deliver the signed worker callback"):
+        send_callback(
+            "https://api.example.test", "callback-secret",
+            "11111111-1111-1111-1111-111111111111", b'{"state":"running"}',
+        )
+
+    assert len(calls) == 1
