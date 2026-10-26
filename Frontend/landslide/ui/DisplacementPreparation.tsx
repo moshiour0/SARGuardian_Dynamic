@@ -70,7 +70,7 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
       <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{pendingAction === 'retry' ? 'Retrying…' : 'Retry task'}</button>
       <button type="button" className="demo-button" disabled={busy} onClick={onBack}>Go to map</button>
     </div>}
-    <ScientificResults job={job} />
+    <ScientificResults job={job} user={user} />
   </section>;
 }
 
