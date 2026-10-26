@@ -37,15 +37,34 @@ class PreflightExpiredError(PersistenceError):
     pass
 
 
-MODERN_SUPABASE_KEY_PREFIXES = ("sb_publishable_", "sb_secret_")
+MODERN_SUPABASE_SECRET_KEY_PREFIX = "sb_secret_"
+LEGACY_SERVICE_ROLE_KEY_PREFIX = "eyJ"
 
 
 def _is_modern_supabase_key(api_key: str) -> bool:
-    return api_key.startswith(MODERN_SUPABASE_KEY_PREFIXES)
+    # A publishable key maps to the low-privilege anon role and must never be
+    # accepted for this server-owned persistence client.
+    return api_key.startswith(MODERN_SUPABASE_SECRET_KEY_PREFIX)
+
+
+def _validate_service_role_key(api_key: str) -> bool:
+    """Validate a server-side Supabase key and return whether it is an opaque secret key."""
+    if api_key.startswith("sb_publishable_"):
+        raise PersistenceConfigurationError(
+            "SUPABASE_SERVICE_ROLE_KEY is a publishable key; configure a server-only "
+            "sb_secret_ key or legacy service_role JWT."
+        )
+    if _is_modern_supabase_key(api_key):
+        return True
+    if api_key.startswith(LEGACY_SERVICE_ROLE_KEY_PREFIX) and api_key.count(".") == 2:
+        return False
+    raise PersistenceConfigurationError(
+        "SUPABASE_SERVICE_ROLE_KEY must be a server-only sb_secret_ key or legacy service_role JWT."
+    )
 
 
 def _normalize_modern_key_headers(client: Any, api_key: str) -> None:
-    """Make PostgREST use an opaque Supabase key as `apikey`, never as Bearer."""
+    """Make PostgREST use an opaque secret key as `apikey`, never as Bearer."""
     options = getattr(client, "options", None)
     headers = getattr(options, "headers", None)
     if not isinstance(headers, dict):
@@ -55,6 +74,17 @@ def _normalize_modern_key_headers(client: Any, api_key: str) -> None:
         if name.lower() in {"authorization", "apikey", "api-key"}:
             del headers[name]
     headers["apikey"] = api_key
+
+
+def _verify_server_role_access(client: Any) -> None:
+    """Run a read-only, zero-row query to catch invalid/underprivileged server keys early."""
+    try:
+        client.table("displacement_jobs").select("id").limit(0).execute()
+    except Exception:
+        raise PersistenceConfigurationError(
+            "Supabase server-side access check failed for public.displacement_jobs. "
+            "Verify SUPABASE_SERVICE_ROLE_KEY is a server-only key and the migration grants are applied."
+        ) from None
 
 
 class JobStore(Protocol):
@@ -293,9 +323,9 @@ def get_job_store() -> SupabaseJobStore:
     service_role_key = settings.supabase_service_role_key
     if not url or not service_role_key:
         raise PersistenceConfigurationError("Supabase persistence is not configured on this server.")
+    modern_key = _validate_service_role_key(service_role_key)
     if create_client is None or ClientOptions is None:
         raise PersistenceConfigurationError("The Supabase Python SDK is not installed on this server.")
-    modern_key = _is_modern_supabase_key(service_role_key)
     options_headers = {"Authorization": ""} if modern_key else None
     try:
         client = create_client(
@@ -311,4 +341,5 @@ def get_job_store() -> SupabaseJobStore:
         raise PersistenceConfigurationError("Supabase persistence could not be initialized.") from None
     if modern_key:
         _normalize_modern_key_headers(client, service_role_key)
+    _verify_server_role_access(client)
     return SupabaseJobStore(client, settings.preflight_ttl_seconds)
