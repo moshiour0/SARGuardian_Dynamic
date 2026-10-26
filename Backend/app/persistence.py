@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from datetime import UTC, datetime, timedelta
@@ -57,7 +58,18 @@ def _validate_service_role_key(api_key: str) -> bool:
     if _is_modern_supabase_key(api_key):
         return True
     if api_key.startswith(LEGACY_SERVICE_ROLE_KEY_PREFIX) and api_key.count(".") == 2:
-        return False
+        try:
+            payload_segment = api_key.split(".")[1]
+            payload_segment += "=" * (-len(payload_segment) % 4)
+            claims = json.loads(base64.urlsafe_b64decode(payload_segment))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            claims = None
+        if isinstance(claims, dict) and claims.get("role") == "service_role":
+            return False
+        raise PersistenceConfigurationError(
+            "SUPABASE_SERVICE_ROLE_KEY is a legacy JWT without the service_role claim; "
+            "configure the project's server-only service key."
+        ) from None
     raise PersistenceConfigurationError(
         "SUPABASE_SERVICE_ROLE_KEY must be a server-only sb_secret_ key or legacy service_role JWT."
     )
