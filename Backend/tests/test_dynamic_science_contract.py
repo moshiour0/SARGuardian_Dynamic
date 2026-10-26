@@ -108,7 +108,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "--minimum-valid-pixels 6" in worker
     assert "SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}" in dashboard
     assert "def parse_aoi_wkt_ring" in (root / "tools" / "measure_target_from_raster.py").read_text(encoding="utf-8")
-    assert "ref: efb299aa2fbe31ab8f6fe6ee796fd45dcfe853ce" in dashboard
+    assert "ref: 67eda4d39b142e9bb28b5363f0e3ba61c977650c" in dashboard
     assert "python dashboard-source/tools/aggregate_aoi_run.py" in dashboard
     assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
     assert "python tools/discover_aoi_products.py" in dashboard
