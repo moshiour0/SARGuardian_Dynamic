@@ -145,18 +145,20 @@ def dispatch_workflow(settings: RuntimeSettings, job_id: UUID, request: CreateDi
     if not settings.displacement_actions_enabled:
         raise GitHubDispatchError("Displacement processing is not configured on this server.")
     endpoint = f"{settings.github_api_url}/repos/{settings.github_actions_repository}/actions/workflows/{settings.github_actions_workflow}/dispatches"
-    # Contract of moshiour0/SARGuardian-backend's sarguardian-aoi-wkt-dashboard.yml.
-    # The dashboard workflow deliberately names its acquisition/date/retention
-    # inputs differently from the account API. Keep this mapping explicit so we
-    # never send undeclared workflow_dispatch inputs (GitHub rejects those with 422).
+    # Contract of the documented/default Dynamic wrapper workflow:
+    # .github/workflows/sarguardian-displacement.yml. It computes the immutable
+    # request fingerprint itself and maps these account-facing option names to
+    # the inner AOI workflow's date_filter_mode/run_profile/retention_profile.
+    # Send ONLY inputs declared by the configured wrapper; undeclared GitHub
+    # dispatch inputs cause HTTP 422 and stop processing before any download.
     body = json.dumps({"ref": settings.github_actions_ref, "inputs": {
         "job_id": str(job_id), "aoi_wkt": request.aoi_wkt,
         "start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(),
         "callback_url": settings.public_api_url,
-        "request_fingerprint": request_fingerprint(request.model_dump()),
-        "date_filter_mode": request.acquisition_window,
-        "run_profile": "full-aoi-baseline" if request.processing_profile == "full-aoi" else "validation-pilot",
-        "retention_profile": request.retention_mode,
+        "product_type": request.product_type,
+        "acquisition_window": request.acquisition_window,
+        "retention_mode": request.retention_mode,
+        "processing_profile": request.processing_profile,
         "place_name": request.place_name or "",
         "place_latitude": "" if request.place_latitude is None else str(request.place_latitude),
         "place_longitude": "" if request.place_longitude is None else str(request.place_longitude),
