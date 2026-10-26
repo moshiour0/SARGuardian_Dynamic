@@ -1165,7 +1165,7 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
   const polygonAreaKm2 = coordinates.length > 2 ? calculateGeodesicAreaKm2(coordinates) : 0;
   const catalogValidation = prepareInvestigation({
     coordinates,
-    place,
+    place: location,
     areaClosed,
     startDate: windowStart,
     endDate: windowEnd,
