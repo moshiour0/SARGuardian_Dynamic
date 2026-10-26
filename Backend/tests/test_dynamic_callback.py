@@ -38,7 +38,18 @@ def test_upstream_dashboard_and_drive_receipt_build_version_two_result(tmp_path:
         "science_commit": "10639a916c9829850775410b3ed7de62e527770d",
         "orchestration_sha": "a" * 40, "aoi_wkt_sha256": "b" * 64,
         "science_diagnostics": {"pixel_stack": {"status": "PASS"}},
+        "web_dashboard": {
+            "schema_version": "sarguardian-web-dashboard/1.0",
+            "status": "PASS", "viewer": "web-dashboard/index.html",
+            "observations": 2, "layers": 4,
+        },
     })
+    write_json(dashboard / "web-dashboard" / "manifest.json", {
+        "schema_version": "sarguardian-web-dashboard/1.0",
+        "validation": {"visual_assets_status": "PASS"},
+    })
+    (dashboard / "web-dashboard" / "index.html").write_text("<html>viewer</html>", encoding="utf-8")
+    (dashboard / "web-dashboard" / "dashboard-data.js").write_text("window.DATA={};", encoding="utf-8")
     products = [
         {"product_type": "GUNW", "granule_name": "NISAR_GUNW", "status": "PASS"},
         {"product_type": "GOFF", "granule_name": "NISAR_GOFF", "status": "PASS"},
@@ -74,6 +85,10 @@ def test_upstream_dashboard_and_drive_receipt_build_version_two_result(tmp_path:
     assert result["storage_verification"]["status"] == "PASS"
     assert result["products"] == products
     assert result["artifacts"][0]["drive_file_id"] == "private-file-id-0"
+    assert result["web_dashboard"] == {
+        "status": "PASS", "schema_version": "sarguardian-web-dashboard/1.0",
+        "viewer": "web-dashboard/index.html", "observations": 2, "layers": 4,
+    }
     assert result["catalog_granule_counts"] == {"GUNW": 8, "GOFF": 5}
     assert result["selected_granule_counts"] == {"GUNW": 1, "GOFF": 1}
     assert result["provenance"]["github_run_id"] == "12345"
