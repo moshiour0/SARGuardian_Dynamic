@@ -978,3 +978,11 @@
   .date-range { width: 100%; }
   .date-range input { width: 100%; }
 }
+
+
+.scientific-results { display: grid; gap: 10px; margin: 12px 0 0; }
+.scientific-results-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.scientific-results-actions .validated-output-link { min-height: 42px; display: inline-flex; justify-content: center; align-items: center; text-decoration: none; }
+.scientific-results-actions button:disabled { cursor: wait; opacity: .72; }
+.scientific-results-note { margin: 0; color: rgba(231, 247, 255, .72); font-size: 12px; line-height: 1.5; max-width: 72ch; }
+.scientific-results-error { margin: 0; padding: 10px 12px; border: 1px solid rgba(255, 144, 131, .4); border-radius: 8px; color: #ffd7d1; background: rgba(92, 26, 25, .32); font-size: 12px; line-height: 1.45; }
