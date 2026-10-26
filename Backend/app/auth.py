@@ -71,6 +71,12 @@ def get_current_user(authorization: str | None = Header(default=None)) -> dict[s
         raise _configuration_http_error() from None
     except (firebase_auth.InvalidIdTokenError, firebase_auth.ExpiredIdTokenError, firebase_auth.RevokedIdTokenError):
         raise HTTPException(status_code=401, detail="The Firebase sign-in token is invalid or expired.") from None
+    except ValueError as exc:
+        # Firebase Admin can defer missing-project-ID validation until token verification.
+        # Treat that specific setup failure as a configuration error, not an unhandled 500.
+        if "A project ID is required to access the auth service" in str(exc):
+            raise _configuration_http_error() from None
+        raise
     except firebase_exceptions.FirebaseError as exc:
         raise _configuration_http_error() from exc
 

@@ -1,0 +1,6 @@
+# Supabase configuration for SARGuardian Dynamic.
+# Keep project settings minimal: production API/Auth/Storage settings remain managed in Dashboard.
+project_id = "sarguardian-dynamic"
+
+[db.migrations]
+enabled = true

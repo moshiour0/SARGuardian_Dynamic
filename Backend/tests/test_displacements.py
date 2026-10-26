@@ -435,7 +435,7 @@ def test_invalid_displacement_wkt_is_rejected(monkeypatch) -> None:
 
 
 def test_displacement_migration_has_immutable_owner_scoped_job_schema() -> None:
-    sql = (main_module.__file__ and __import__("pathlib").Path(main_module.__file__).parents[1] / "migrations" / "002_displacement_jobs.sql").read_text(encoding="utf-8")
+    sql = (main_module.__file__ and __import__("pathlib").Path(main_module.__file__).parents[1] / "supabase" / "migrations" / "20261022203034_displacement_jobs.sql").read_text(encoding="utf-8")
     assert "create table public.displacement_jobs" in sql
     assert "unique (owner_uid, idempotency_key)" in sql
     assert "displacement_jobs_transition_guard" in sql
@@ -444,7 +444,7 @@ def test_displacement_migration_has_immutable_owner_scoped_job_schema() -> None:
 
 
 def test_active_displacement_request_guard_migration_is_present() -> None:
-    sql = (__import__("pathlib").Path(main_module.__file__).parents[1] / "migrations" / "003_displacement_active_request_guard.sql").read_text(encoding="utf-8")
+    sql = (__import__("pathlib").Path(main_module.__file__).parents[1] / "supabase" / "migrations" / "20261023141449_displacement_active_request_guard.sql").read_text(encoding="utf-8")
     assert "create unique index" in sql
     assert "where state in ('queued', 'dispatching', 'running')" in sql
 

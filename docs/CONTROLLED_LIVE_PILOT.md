@@ -1,6 +1,6 @@
 # Controlled live science pilot
 
-Run this only after migration `004_scientific_request_contract.sql` has been applied,
+Run this only after migration `20261024111404_scientific_request_contract.sql` has been applied,
 the target repository workflow has been reviewed, and authorized Earthdata and private
 Drive credentials have been configured. The normal test suite uses deterministic mocks;
 it does not establish geophysical accuracy.

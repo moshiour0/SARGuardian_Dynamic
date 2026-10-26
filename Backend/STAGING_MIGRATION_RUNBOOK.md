@@ -3,6 +3,64 @@
 This runbook is for the specifically approved, NEW Supabase Free staging project
 only. It does not authorize a live database operation by itself.
 
+## GitHub integration working-directory requirement
+
+The current Dashboard screenshot shows the GitHub integration working directory as
+`Backend/migrations`. This repository change relocates the canonical Supabase project
+folder to `Backend/supabase/`; a Git commit cannot change the Supabase Dashboard
+integration setting. Before merging, open **Settings → Integrations → GitHub** and set
+**Working directory** to `Backend`, then save it. Do not keep `Backend/migrations`
+as the setting: that directory does not contain the `supabase/` project folder.
+
+Changing the setting while **Deploy to production** remains enabled can make the next
+merge to `main` deploy the pending migrations automatically. Verify the database's
+current schema and migration history first; do not merge just to test this setting.
+
+## Read-only production migration-history gate
+
+Before changing the integration path or merging a production-triggering migration, open
+SQL Editor in the exact connected project and run these read-only checks. First inspect
+whether the migration-history table exists and whether the application's known objects
+are already present:
+
+```sql
+select to_regclass('supabase_migrations.schema_migrations') as migration_history_table,
+       to_regtype('public.processing_job_state') as processing_job_state,
+       to_regclass('public.catalog_preflights') as catalog_preflights,
+       to_regclass('public.processing_jobs') as processing_jobs,
+       to_regclass('public.displacement_jobs') as displacement_jobs;
+
+select table_schema, table_name
+from information_schema.tables
+where table_schema = 'public'
+  and table_name in ('catalog_preflights', 'processing_jobs', 'displacement_jobs')
+order by table_name;
+```
+
+Only if `migration_history_table` is not null, run this read-only history query:
+
+```sql
+select version
+from supabase_migrations.schema_migrations
+order by version;
+```
+
+Preserve the results. If the application tables exist but their migration versions are
+absent, do not merge and let automation replay the files; compare the exact existing
+definitions against all four SQL migrations and make a deliberate, reviewed history
+reconciliation plan first. A table-exists check alone does not prove schema parity.
+
+## GitHub integration safety gate
+
+The connected repository's Supabase integration has **Deploy to production** enabled for
+`main`. Once this migration layout is merged to `main`, Supabase can automatically run
+the SQL files in `supabase/migrations/`. Do not merge this change until the actual
+connected project's schema and `supabase_migrations.schema_migrations` history have been
+read-only inspected. Earlier SQL Editor executions may have created the objects without
+registering these version IDs; if so, automatic deployment would try to run them again.
+Do not use migration repair or mark versions as applied unless the actual schema has been
+verified to match each migration exactly.
+
 ## Identify the intended project
 
 1. Obtain the approved staging project name, project reference, and project URL from
@@ -20,7 +78,7 @@ From a local checkout, inspect the proposed migration without connecting anywher
 
 ```powershell
 cd D:\SARGuardian_Dynamic\Backend
-Get-Content .\migrations\001_processing_jobs.sql
+Get-Content .\supabase\migrations\20261017143644_processing_jobs.sql
 ```
 
 Confirm the review covers the transaction, schema-drift checks, Firebase-UID owner
@@ -46,7 +104,7 @@ select to_regtype('public.processing_job_state') as processing_job_state,
 ```
 
 3. After project identity and the read-only result are approved, paste the complete
-   contents of `migrations/001_processing_jobs.sql` and run it once.
+   contents of `supabase/migrations/20261017143644_processing_jobs.sql` and run it once.
 4. The migration runs in a transaction. If it reports schema drift or another
    error, stop and preserve the error for review; do not run destructive cleanup or
    attempt a blind retry.

@@ -151,7 +151,7 @@ def test_job_state_transitions_are_explicit() -> None:
 
 
 def test_sql_enforces_one_global_active_heavy_job_and_transition_guard() -> None:
-    migration = Path(__file__).parents[1] / "migrations" / "001_processing_jobs.sql"
+    migration = Path(__file__).parents[1] / "supabase" / "migrations" / "20261017143644_processing_jobs.sql"
     sql = migration.read_text(encoding="utf-8")
     assert "begin;" in sql
     assert "commit;" in sql
