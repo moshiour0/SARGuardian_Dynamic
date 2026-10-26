@@ -434,7 +434,7 @@ jobs:
           set +e
           python tools/measure_target_from_raster.py --raster "$raster" --product-type "$PRODUCT_TYPE" \
             --longitude "$TARGET_LONGITUDE" --latitude "$TARGET_LATITUDE" --radius-px 3 \
-            --minimum-valid-pixels 3 --out "$report"
+            --minimum-valid-pixels 6 --out "$report"
           rc=$?
           set -e
           if [[ ! -s "$report" ]]; then
