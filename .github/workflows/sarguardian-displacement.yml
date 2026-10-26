@@ -154,7 +154,7 @@ jobs:
       start_date: ${{ inputs.start_date }}
       end_date: ${{ inputs.end_date }}
       date_filter_mode: ${{ inputs.acquisition_window }}
-      run_profile: full-aoi-baseline
+      run_profile: ${{ inputs.processing_profile == 'full-aoi' && 'full-aoi-baseline' || 'validation-pilot' }}
       retention_profile: ${{ inputs.retention_mode }}
       product_type: ${{ inputs.product_type }}
       job_id: ${{ inputs.job_id }}
