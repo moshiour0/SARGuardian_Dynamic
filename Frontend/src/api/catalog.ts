@@ -143,6 +143,34 @@ export async function searchNisarCatalog(input: CatalogSearchRequest, user: Pick
   return payload as CatalogResponse;
 }
 
+export async function getInteractiveDashboardHtml(
+  jobId: string,
+  user: Pick<User, 'getIdToken'> | null,
+): Promise<string> {
+  const safeId = jobId.trim();
+  if (!/^[0-9a-f-]{36}$/i.test(safeId)) throw new Error('Invalid displacement job ID.');
+  const token = await getFirebaseIdToken(user);
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/api/displacement-jobs/${encodeURIComponent(safeId)}/dashboard`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, Accept: 'text/html' },
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Could not reach the processing service. Check your connection and retry.');
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { detail?: string; message?: string };
+    throw new Error(payload.detail || payload.message || `Could not open the interactive dashboard (${response.status}).`);
+  }
+  const type = response.headers.get('content-type') || '';
+  if (!type.toLowerCase().includes('text/html')) {
+    throw new Error('The processing service returned an unexpected dashboard format.');
+  }
+  return response.text();
+}
+
 async function getFirebaseIdToken(user: Pick<User, 'getIdToken'> | null): Promise<string> {
   if (!user) throw new Error('Sign in before submitting a processing job.');
   try {
