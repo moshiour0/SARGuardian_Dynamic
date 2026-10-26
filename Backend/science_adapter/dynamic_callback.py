@@ -79,7 +79,20 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
     summary = _load_json(find_unique(dashboard_root, "aoi-run-summary.json"))
     report = _load_json(find_unique(dashboard_root, "aoi-processing-report.json"))
     receipt = _load_json(find_unique(dashboard_root, "drive-dashboard-upload-receipt.json"))
-    manifest = _load_json(find_unique(dashboard_root, "manifest.json"))
+    # The result bundle now contains web-dashboard/manifest.json. The input
+    # selection manifest remains the authoritative AOI/product manifest.
+    selected_manifest_path = dashboard_root / "manifest" / "manifest.json"
+    manifest = _load_json(
+        selected_manifest_path if selected_manifest_path.is_file()
+        else find_unique(dashboard_root, "manifest.json")
+    )
+    web_dashboard = summary.get("web_dashboard")
+    if not isinstance(web_dashboard, dict):
+        web_dashboard = {"status": "NOT_AVAILABLE"}
+    viewer_path = dashboard_root / "web-dashboard" / "index.html"
+    data_path = dashboard_root / "web-dashboard" / "dashboard-data.js"
+    if web_dashboard.get("status") == "PASS" and not (viewer_path.is_file() and data_path.is_file()):
+        raise CallbackError("Dashboard receipt reports PASS but viewer files are missing from the uploaded workflow artifact.")
     products = report.get("products")
     files = receipt.get("files")
     processing_report = report.get("processing_report")
@@ -139,6 +152,13 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
             "remote_folder_id": remote_folder_id,
         },
         "artifacts": artifacts,
+        "web_dashboard": {
+            "status": web_dashboard.get("status", "NOT_AVAILABLE"),
+            "schema_version": web_dashboard.get("schema_version"),
+            "viewer": web_dashboard.get("viewer") if web_dashboard.get("status") == "PASS" else None,
+            "observations": web_dashboard.get("observations") if web_dashboard.get("status") == "PASS" else None,
+            "layers": web_dashboard.get("layers") if web_dashboard.get("status") == "PASS" else None,
+        },
         "products": products,
         "catalog_granule_counts": {family: baseline_counts[family] for family in ("GUNW", "GOFF")},
         "selected_granule_counts": {
