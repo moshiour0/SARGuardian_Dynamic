@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import math
 import logging
+import hashlib
+from io import BytesIO
+from pathlib import PurePosixPath
+from zipfile import BadZipFile, ZipFile
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
@@ -623,6 +627,97 @@ def _valid_private_artifacts(value: object) -> bool:
                 or not isinstance(drive_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{10,200}", drive_id)):
             return False
     return True
+
+
+MAX_DASHBOARD_ARCHIVE_BYTES = 100 * 1024 * 1024
+MAX_DASHBOARD_HTML_BYTES = 2 * 1024 * 1024
+MAX_DASHBOARD_DATA_BYTES = 40 * 1024 * 1024
+DASHBOARD_VIEWER_PATH = "web-dashboard/index.html"
+DASHBOARD_DATA_PATH = "web-dashboard/dashboard-data.js"
+
+
+@app.get("/api/displacement-jobs/{job_id}/dashboard")
+async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_current_user)) -> Response:
+    """Return the verified owner's interactive dashboard as self-contained HTML.
+
+    The private Drive ZIP is verified against the signed callback inventory before
+    reading its viewer assets. Only two exact in-archive files are read; no archive
+    paths are extracted to disk and no Drive ID is disclosed to the browser.
+    """
+    try:
+        record = _require_store().get_displacement_job(_required_owner_uid(user), job_id)
+    except PersistenceError:
+        raise HTTPException(status_code=503, detail="Could not read the requested interactive dashboard.") from None
+    if not record:
+        raise HTTPException(status_code=404, detail="Processing job was not found for this account.")
+    if record.get("state") != JobState.SUCCEEDED.value:
+        raise HTTPException(status_code=409, detail="The interactive dashboard is available only after processing succeeds.")
+
+    result_summary = record.get("result_summary")
+    dashboard_status = result_summary.get("web_dashboard") if isinstance(result_summary, dict) else None
+    if not isinstance(dashboard_status, dict) or dashboard_status.get("status") != "PASS":
+        raise HTTPException(status_code=404, detail="This result package does not include a validated interactive dashboard. Re-run processing after dashboard support is enabled.")
+
+    artifacts = result_summary.get("artifacts") if isinstance(result_summary, dict) else None
+    if not _valid_private_artifacts(artifacts):
+        raise HTTPException(status_code=404, detail="A verified dashboard result bundle was not found.")
+    matches = [item for item in artifacts if item.get("path") == "aoi-derived-results.zip"]
+    if len(matches) != 1:
+        raise HTTPException(status_code=404, detail="A unique verified dashboard result bundle was not found.")
+    artifact = matches[0]
+    if artifact["bytes"] > MAX_DASHBOARD_ARCHIVE_BYTES:
+        raise HTTPException(status_code=413, detail="This dashboard bundle is too large to open in the interactive viewer. Download the result package instead.")
+
+    try:
+        received, data = download_private_result(artifact["drive_file_id"])
+    except DriveUploadError:
+        raise HTTPException(status_code=503, detail="Private dashboard storage is unavailable. Retry in a moment.") from None
+    if received.get("bytes") != artifact["bytes"] or len(data) != artifact["bytes"] or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
+        raise HTTPException(status_code=409, detail="Stored dashboard bundle no longer matches its verified checksum inventory.")
+
+    try:
+        with ZipFile(BytesIO(data), "r") as archive:
+            names = archive.namelist()
+            if len(names) > 20_000:
+                raise HTTPException(status_code=413, detail="Dashboard bundle contains too many files.")
+            for name in names:
+                item_path = PurePosixPath(name)
+                if name.startswith("/") or "\\" in name or ".." in item_path.parts or "\x00" in name:
+                    raise HTTPException(status_code=409, detail="Dashboard bundle contains an unsafe archive path.")
+            if names.count(DASHBOARD_VIEWER_PATH) != 1 or names.count(DASHBOARD_DATA_PATH) != 1:
+                raise HTTPException(status_code=404, detail="The result package does not contain the interactive dashboard assets.")
+            html_info = archive.getinfo(DASHBOARD_VIEWER_PATH)
+            data_info = archive.getinfo(DASHBOARD_DATA_PATH)
+            if html_info.file_size > MAX_DASHBOARD_HTML_BYTES or data_info.file_size > MAX_DASHBOARD_DATA_BYTES:
+                raise HTTPException(status_code=413, detail="Interactive dashboard assets exceed the safe browser-viewing size.")
+            html = archive.read(html_info).decode("utf-8")
+            dashboard_data = archive.read(data_info).decode("utf-8")
+    except HTTPException:
+        raise
+    except (BadZipFile, KeyError, UnicodeDecodeError, OSError):
+        raise HTTPException(status_code=409, detail="Stored result bundle does not contain a readable dashboard.") from None
+
+    data_marker = '<script src="./dashboard-data.js"></script>'
+    if html.count(data_marker) != 1 or "</script" in dashboard_data.lower():
+        raise HTTPException(status_code=409, detail="Dashboard viewer does not match the supported embedded-data contract.")
+    html = html.replace(data_marker, "<script>\\n" + dashboard_data + "\\n</script>", 1)
+    html = html.replace(
+        '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a>',
+        '<span style="color:var(--aqua);padding:9px">Verified research dashboard</span>',
+    )
+    csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src data: https: blob:; connect-src https:; worker-src blob:; font-src https: data:;"
+    meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
+    if "<head>" in html:
+        html = html.replace("<head>", "<head>" + meta, 1)
+    elif re.search(r"<head\\b[^>]*>", html, flags=re.IGNORECASE):
+        html = re.sub(r"(<head\\b[^>]*>)", r"\\1" + meta, html, count=1, flags=re.IGNORECASE)
+    else:
+        raise HTTPException(status_code=409, detail="Dashboard viewer has no HTML head section.")
+    return Response(content=html, media_type="text/html", headers={
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
+    })
 
 
 @app.get("/api/displacement-jobs/{job_id}/artifacts/{artifact_index}")
