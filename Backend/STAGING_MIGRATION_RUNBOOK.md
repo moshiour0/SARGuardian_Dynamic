@@ -204,3 +204,9 @@ verified Firebase UID. Supabase Auth `auth.uid()` is not assumed to equal a Fire
 UID. The browser never receives the server-only Supabase key; a modern `sb_secret_...`
 value remains an `apikey` header credential for the backend's Supabase client, while
 the Firebase ID token remains the end-user `Authorization: Bearer` credential.
+
+## Runtime permission failure: displacement job persistence
+
+The backend must connect with a **server-only** Supabase key: a modern `sb_secret_...` key or the legacy `service_role` JWT. A `sb_publishable_...` key is for low-privilege client access and must never be stored as `SUPABASE_SERVICE_ROLE_KEY`. Do not solve a `permission denied for table public.displacement_jobs` error by granting table access to `anon` or `authenticated`.
+
+The backend performs a read-only `SELECT id ... LIMIT 0` permission probe against `public.displacement_jobs` when its persistence client is initialized. If that probe fails, check the key type in **Render → SARGuardian_Dynamic → Environment** and compare it privately with **Supabase → Settings → API Keys**. Replace the value only with the project's server-only secret key, or a still-enabled legacy `service_role` JWT. Never paste the key into a log, issue, chat, browser variable, or repository. After changing the Render environment, wait for its automatic redeploy and verify `GET /api/displacement-jobs` returns `200` for a signed-in test account (an empty JSON array is a valid result for an account with no jobs).
