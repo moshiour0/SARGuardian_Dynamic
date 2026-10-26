@@ -96,7 +96,18 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "uses: ./.github/workflows/sarguardian-aoi-wkt-dashboard.yml" in workflow
     assert "aoi_wkt: ${{ inputs.aoi_wkt }}" in workflow
     assert "date_filter_mode: ${{ inputs.acquisition_window }}" in workflow
-    assert "run_profile: full-aoi-baseline" in workflow
+    assert "inputs.processing_profile == 'full-aoi' && 'full-aoi-baseline' || 'validation-pilot'" in workflow
+    assert "place_name: ${{ inputs.place_name }}" in workflow
+    assert "target_latitude: ${{ inputs.target_latitude }}" in workflow
+    assert "TARGET_LATITUDE: ${{ inputs.target_latitude }}" in worker
+    assert "TARGET_LONGITUDE: ${{ inputs.target_longitude }}" in worker
+    assert "id: target_measurement" in worker
+    assert "id: local_floor" in worker
+    assert "measure_target_from_raster.py" in worker
+    assert "SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}" in dashboard
+    assert "ref: efb299aa2fbe31ab8f6fe6ee796fd45dcfe853ce" in dashboard
+    assert "python dashboard-source/tools/aggregate_aoi_run.py" in dashboard
+    assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
     assert "python tools/discover_aoi_products.py" in dashboard
     assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in dashboard
     assert dashboard.count("job_id: ${{ inputs.job_id }}") >= 2
