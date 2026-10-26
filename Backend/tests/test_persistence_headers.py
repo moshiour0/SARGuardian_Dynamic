@@ -137,7 +137,7 @@ def test_server_access_probe_fails_closed_without_exposing_provider_error(monkey
         def table(self, _table_name: str) -> FakeQuery:
             return FakeQuery()
 
-    def fake_create_client(_url: str, key: str, _options: FakeOptions) -> FakeClient:
+    def fake_create_client(_url: str, key: str, options: FakeOptions) -> FakeClient:
         return FakeClient({"apiKey": key, "Authorization": ""})
 
     monkeypatch.setenv("SUPABASE_URL", "https://example.invalid")
