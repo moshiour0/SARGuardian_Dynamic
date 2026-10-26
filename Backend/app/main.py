@@ -700,19 +700,16 @@ async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_curr
     data_marker = '<script src="./dashboard-data.js"></script>'
     if html.count(data_marker) != 1 or "</script" in dashboard_data.lower():
         raise HTTPException(status_code=409, detail="Dashboard viewer does not match the supported embedded-data contract.")
-    html = html.replace(data_marker, "<script>\\n" + dashboard_data + "\\n</script>", 1)
+    html = html.replace(data_marker, "<script>\n" + dashboard_data + "\n</script>", 1)
     html = html.replace(
         '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a>',
         '<span style="color:var(--aqua);padding:9px">Verified research dashboard</span>',
     )
     csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src data: https: blob:; connect-src https:; worker-src blob:; font-src https: data:;"
     meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
-    if "<head>" in html:
-        html = html.replace("<head>", "<head>" + meta, 1)
-    elif re.search(r"<head\\b[^>]*>", html, flags=re.IGNORECASE):
-        html = re.sub(r"(<head\\b[^>]*>)", r"\\1" + meta, html, count=1, flags=re.IGNORECASE)
-    else:
+    if "<head>" not in html:
         raise HTTPException(status_code=409, detail="Dashboard viewer has no HTML head section.")
+    html = html.replace("<head>", "<head>" + meta, 1)
     return Response(content=html, media_type="text/html", headers={
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
