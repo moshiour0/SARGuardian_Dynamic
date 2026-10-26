@@ -10,9 +10,17 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+import time
 
 SCIENCE_REPOSITORY = "moshiour0/SARGuardian"
 SCIENCE_COMMIT = "10639a916c9829850775410b3ed7de62e527770d"
+CALLBACK_MAX_ATTEMPTS = 5
+CALLBACK_RETRYABLE_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+
+def _callback_retry_delay(attempt: int) -> float:
+    """Short bounded backoff; account callbacks must not wait indefinitely."""
+    return min(0.5 * (2 ** max(0, attempt - 1)), 4.0)
 
 
 class CallbackError(RuntimeError):
@@ -176,18 +184,38 @@ def callback_payload(*, state: str, stage: str, sequence: int, github_run_id: st
 
 
 def send_callback(callback_url: str, callback_secret: str, job_id: str, body: bytes) -> None:
+    """Deliver one immutable signed callback, retrying only transient delivery failures.
+
+    The same bytes and HMAC are reused on every attempt. The receiver explicitly
+    accepts an exact duplicate sequence idempotently, which is important when the
+    database commit succeeded but a gateway returned a transient 5xx response.
+    Non-transient 4xx responses (including 409 contract conflicts) fail closed.
+    """
     signature = "sha256=" + hmac.new(callback_secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     request = Request(
         f"{callback_url.rstrip('/')}/api/displacement-jobs/{job_id}/callback",
         data=body, method="POST",
         headers={"Content-Type": "application/json", "X-SARGuardian-Signature": signature},
     )
-    try:
-        with urlopen(request, timeout=30) as response:
-            if response.status < 200 or response.status >= 300:
-                raise CallbackError("Job status service rejected the worker callback.")
-    except (HTTPError, URLError, TimeoutError) as exc:
-        raise CallbackError("Could not deliver the signed worker callback.") from exc
+
+    for attempt in range(1, CALLBACK_MAX_ATTEMPTS + 1):
+        try:
+            with urlopen(request, timeout=30) as response:
+                if 200 <= response.status < 300:
+                    return
+                if response.status not in CALLBACK_RETRYABLE_HTTP_STATUSES or attempt >= CALLBACK_MAX_ATTEMPTS:
+                    raise CallbackError("Job status service rejected the worker callback.")
+        except HTTPError as exc:
+            if exc.code not in CALLBACK_RETRYABLE_HTTP_STATUSES or attempt >= CALLBACK_MAX_ATTEMPTS:
+                raise CallbackError("Could not deliver the signed worker callback.") from None
+            exc.close()
+        except (URLError, TimeoutError):
+            if attempt >= CALLBACK_MAX_ATTEMPTS:
+                raise CallbackError("Could not deliver the signed worker callback.") from None
+
+        time.sleep(_callback_retry_delay(attempt))
+
+    raise CallbackError("Could not deliver the signed worker callback.")
 
 
 def main() -> int:
