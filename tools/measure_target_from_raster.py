@@ -20,6 +20,44 @@ from rasterio.warp import transform as transform_coordinates
 from rasterio.windows import Window
 
 
+def parse_aoi_wkt_ring(aoi_wkt: str) -> list[tuple[float, float]]:
+    """Parse the single-ring WGS84 POLYGON contract used by dynamic AOI jobs."""
+    match = re.fullmatch(r"\s*POLYGON\s*\(\s*\(\s*(.*?)\s*\)\s*\)\s*", aoi_wkt, flags=re.IGNORECASE | re.DOTALL)
+    if not match:
+        raise ValueError("AOI must be a single-ring WGS84 POLYGON WKT")
+    ring: list[tuple[float, float]] = []
+    for coordinate in match.group(1).split(","):
+        fields = coordinate.split()
+        if len(fields) != 2:
+            raise ValueError("AOI ring must contain longitude/latitude coordinate pairs")
+        longitude, latitude = float(fields[0]), float(fields[1])
+        if not (math.isfinite(longitude) and math.isfinite(latitude)
+                and -180 <= longitude <= 180 and -90 <= latitude <= 90):
+            raise ValueError("AOI coordinates must be finite WGS84 longitude/latitude")
+        ring.append((longitude, latitude))
+    if len(ring) < 4 or ring[0] != ring[-1]:
+        raise ValueError("AOI ring must have at least four coordinates and be closed")
+    return ring
+
+
+def point_in_ring(longitude: float, latitude: float, ring: list[tuple[float, float]]) -> bool:
+    """Ray-casting check for target eligibility inside/on the exact AOI ring."""
+    inside = False
+    for index in range(len(ring) - 1):
+        x1, y1 = ring[index]
+        x2, y2 = ring[index + 1]
+        cross = (longitude - x1) * (y2 - y1) - (latitude - y1) * (x2 - x1)
+        if (abs(cross) <= 1e-10
+                and min(x1, x2) - 1e-10 <= longitude <= max(x1, x2) + 1e-10
+                and min(y1, y2) - 1e-10 <= latitude <= max(y1, y2) + 1e-10):
+            return True
+        if (y1 > latitude) != (y2 > latitude):
+            crossing = x1 + (latitude - y1) * (x2 - x1) / (y2 - y1)
+            if longitude < crossing:
+                inside = not inside
+    return inside
+
+
 def finite_values(values: np.ndarray, nodata: float | None = None,
                   mask: np.ndarray | None = None) -> np.ndarray:
     arr = np.asarray(values, dtype="float64")
@@ -42,6 +80,7 @@ def measure_target(
     *,
     radius_px: int = 3,
     minimum_valid_pixels: int = 6,
+    aoi_wkt: str | None = None,
 ) -> dict[str, Any]:
     """Return local window statistics without interpreting them as a time series."""
     family = product_type.upper()
@@ -52,6 +91,19 @@ def measure_target(
         raise ValueError("Target must be finite WGS84 longitude/latitude")
     if radius_px < 0 or minimum_valid_pixels < 1:
         raise ValueError("radius_px must be non-negative and minimum_valid_pixels must be positive")
+    if not aoi_wkt:
+        raise ValueError("The exact submitted AOI WKT is required for target eligibility")
+    ring = parse_aoi_wkt_ring(aoi_wkt)
+    if not point_in_ring(longitude, latitude, ring):
+        return {
+            "schema_version": 1, "status": "REJECTED_OUTSIDE_AOI",
+            "product_type": family, "source_raster": raster_path.name,
+            "target": {"longitude": longitude, "latitude": latitude, "radius_px": radius_px,
+                       "window_pixels": 0, "requested_window_pixels": (2 * radius_px + 1) ** 2,
+                       "valid_pixels": 0, "valid_fraction": 0.0},
+            "measurements": {},
+            "interpretation": "The target is outside the exact submitted AOI polygon; no raster value was measured.",
+        }
 
     with rasterio.open(raster_path) as ds:
         if ds.crs is None or ds.count < (2 if family == "GUNW" else 3):
@@ -148,13 +200,15 @@ def main() -> int:
     parser.add_argument("--product-type", required=True, choices=("GUNW", "GOFF"))
     parser.add_argument("--longitude", required=True, type=float)
     parser.add_argument("--latitude", required=True, type=float)
+    parser.add_argument("--aoi-wkt", required=True, help="Exact submitted single-ring WGS84 POLYGON WKT")
     parser.add_argument("--radius-px", type=int, default=3)
     parser.add_argument("--minimum-valid-pixels", type=int, default=6)
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
     try:
         result = measure_target(args.raster, args.product_type, args.longitude, args.latitude,
-                                radius_px=args.radius_px, minimum_valid_pixels=args.minimum_valid_pixels)
+                                radius_px=args.radius_px, minimum_valid_pixels=args.minimum_valid_pixels,
+                                aoi_wkt=args.aoi_wkt)
     except (OSError, ValueError, rasterio.errors.RasterioError) as exc:
         print("TARGET_MEASUREMENT_ERROR=" + type(exc).__name__ + ":" + str(exc)[:250])
         return 2
