@@ -34,6 +34,14 @@ on:
         required: false
         type: string
         default: ''
+      target_latitude:
+        required: false
+        type: string
+        default: ''
+      target_longitude:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   process:
@@ -58,6 +66,8 @@ jobs:
       RETENTION_PROFILE: ${{ inputs.retention_profile }}
       PRODUCT_EXECUTION_LABEL: ${{ inputs.execution_label }}
       DRIVE_JOB_ID: ${{ inputs.job_id }}
+      TARGET_LATITUDE: ${{ inputs.target_latitude }}
+      TARGET_LONGITUDE: ${{ inputs.target_longitude }}
       EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
       EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
       EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
@@ -328,6 +338,122 @@ jobs:
           printf 'PRODUCT_MILESTONE=science_reader_completed product_id=%s family=%s status=PASS\n' \
             "$PRODUCT_ID" "$PRODUCT_TYPE"
 
+      - name: Measure pair-local noise floor at the selected in-AOI target
+        id: local_floor
+        if: steps.reader.outcome == 'success'
+        shell: bash
+        env:
+          CURATED_DIR: ${{ steps.paths.outputs.curated_dir }}
+          PRODUCT_TYPE: ${{ env.PRODUCT_TYPE }}
+          TARGET_LATITUDE: ${{ env.TARGET_LATITUDE }}
+          TARGET_LONGITUDE: ${{ env.TARGET_LONGITUDE }}
+        run: |
+          set -uo pipefail
+          root="$CURATED_DIR/derived"
+          mkdir -p "$root"
+          report="$root/local_floor.json"
+          output="$root/local_floor.csv"
+          export_dir="$root/export_custom"
+          match_args=()
+          if [[ "$PRODUCT_TYPE" == "GOFF" ]]; then
+            export_dir="$root/export_goff_custom"
+            match_args=(--match layer2)
+          fi
+          if [[ -z "$TARGET_LATITUDE" || -z "$TARGET_LONGITUDE" ]]; then
+            python - "$report" <<'PY'
+          import json,sys
+          with open(sys.argv[1],"w",encoding="utf-8") as f:
+              json.dump({"schema_version":1,"status":"NOT_RUN_NO_IN_AOI_TARGET",
+                         "reason":"No in-AOI target coordinate was supplied; no local floor was inferred.",
+                         "metric_is_motion":False},f,indent=2)
+          PY
+            echo "LOCAL_FLOOR_STATUS=NOT_RUN_NO_IN_AOI_TARGET"
+            echo "status=NOT_RUN_NO_IN_AOI_TARGET" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          python science-source/src/local_floor.py \
+            --dir "$export_dir" --aoi custom --lat "$TARGET_LATITUDE" --lon "$TARGET_LONGITUDE" \
+            "${match_args[@]}" --band 1 --sweep 3 6 12 --csv "$output" \
+            > "$root/local_floor.log" 2>&1
+          rc=$?
+          set -e
+          if [[ "$rc" == "0" && -s "$output" ]]; then
+            status="PAIRWISE_FLOOR_ROWS_WRITTEN"
+          else
+            status="UNAVAILABLE_NO_MEASURABLE_FLOOR"
+          fi
+          python - "$report" "$status" "$rc" "$TARGET_LATITUDE" "$TARGET_LONGITUDE" "$output" <<'PY'
+          import json,os,sys
+          path,status,rc,lat,lon,csv_path=sys.argv[1:]
+          with open(path,"w",encoding="utf-8") as f:
+              json.dump({"schema_version":1,"status":status,"exit_code":int(rc),
+                         "target":{"latitude":float(lat),"longitude":float(lon),"aoi":"custom"},
+                         "csv_path":os.path.relpath(csv_path,os.path.dirname(path)) if os.path.isfile(csv_path) else None,
+                         "metric_is_motion":False,
+                         "interpretation":"Pair-specific spatial noise/detectability estimate around the requested point. Not observed displacement, a common stable-ground reference, cumulative motion or a forecast."},
+                        f,indent=2,sort_keys=True)
+          PY
+          echo "LOCAL_FLOOR_STATUS=$status"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Extract target-local pair measurement from the AOI-clipped raster
+        id: target_measurement
+        if: steps.reader.outcome == 'success'
+        shell: bash
+        env:
+          CURATED_DIR: ${{ steps.paths.outputs.curated_dir }}
+          PRODUCT_TYPE: ${{ env.PRODUCT_TYPE }}
+          TARGET_LATITUDE: ${{ env.TARGET_LATITUDE }}
+          TARGET_LONGITUDE: ${{ env.TARGET_LONGITUDE }}
+        run: |
+          set -uo pipefail
+          root="$CURATED_DIR/derived"
+          mkdir -p "$root"
+          report="$root/target-measurement.json"
+          export_dir="$root/export_custom"
+          if [[ "$PRODUCT_TYPE" == "GOFF" ]]; then export_dir="$root/export_goff_custom"; fi
+          if [[ -z "$TARGET_LATITUDE" || -z "$TARGET_LONGITUDE" ]]; then
+            python - "$report" <<'PY'
+          import json,sys
+          with open(sys.argv[1],"w",encoding="utf-8") as f:
+              json.dump({"schema_version":1,"status":"NOT_RUN_NO_IN_AOI_TARGET","measurements":{},
+                         "interpretation":"No in-AOI target was supplied; no target value was inferred."},f,indent=2)
+          PY
+            echo "TARGET_MEASUREMENT_STATUS=NOT_RUN_NO_IN_AOI_TARGET"
+            echo "status=NOT_RUN_NO_IN_AOI_TARGET" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          raster="$(find "$export_dir" -maxdepth 1 -type f -name '*.tif' | sort | head -n 1)"
+          if [[ -z "$raster" ]]; then
+            echo '{"schema_version":1,"status":"UNAVAILABLE_NO_AOI_RASTER","measurements":{},"interpretation":"No validated target raster was available."}' > "$report"
+            echo "TARGET_MEASUREMENT_STATUS=UNAVAILABLE_NO_AOI_RASTER"
+            echo "status=UNAVAILABLE_NO_AOI_RASTER" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          set +e
+          python tools/measure_target_from_raster.py --raster "$raster" --product-type "$PRODUCT_TYPE" \
+            --longitude "$TARGET_LONGITUDE" --latitude "$TARGET_LATITUDE" --radius-px 3 \
+            --minimum-valid-pixels 3 --out "$report"
+          rc=$?
+          set -e
+          if [[ ! -s "$report" ]]; then
+            python - "$report" "$rc" <<'PY'
+          import json,sys
+          with open(sys.argv[1],"w",encoding="utf-8") as f:
+              json.dump({"schema_version":1,"status":"UNAVAILABLE_MEASUREMENT_ERROR","exit_code":int(sys.argv[2]),
+                         "measurements":{},"interpretation":"Target measurement tool did not produce a report."},f,indent=2)
+          PY
+          fi
+          status="$(python - "$report" <<'PY'
+          import json,sys
+          try: print(json.load(open(sys.argv[1],encoding="utf-8")).get("status","UNAVAILABLE_MEASUREMENT_ERROR"))
+          except Exception: print("UNAVAILABLE_MEASUREMENT_ERROR")
+          PY
+          )"
+          echo "TARGET_MEASUREMENT_STATUS=$status"
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
       - name: Validate derived outputs against the AOI-specific structural checks before cleanup
         id: derived_validation
         env:
@@ -425,6 +551,13 @@ jobs:
               "source_dataset_inventory": "source-inventory.json",
               "preflight_report": "preflight-report.json", "download_manifest": "download-manifest.json",
               "drive_remote_verification": "PENDING", "local_raw_source_deleted_at_manifest_creation": False,
+              "local_floor_status": (json.loads((root / "derived" / "local_floor.json").read_text(encoding="utf-8")).get("status")
+                                     if (root / "derived" / "local_floor.json").is_file() else "NOT_REPORTED"),
+              "local_floor_report": "derived/local_floor.json" if (root / "derived" / "local_floor.json").is_file() else None,
+              "local_floor_csv": "derived/local_floor.csv" if (root / "derived" / "local_floor.csv").is_file() else None,
+              "target_measurement_status": (json.loads((root / "derived" / "target-measurement.json").read_text(encoding="utf-8")).get("status")
+                                            if (root / "derived" / "target-measurement.json").is_file() else "NOT_REPORTED"),
+              "target_measurement_report": "derived/target-measurement.json" if (root / "derived" / "target-measurement.json").is_file() else None,
               "cleanup_receipt": "local-cleanup-receipt.json",
               "source_dataset_inventory_count": len(inventory.get("datasets", [])),
               "excluded_dataset_count": 0 if profile == "full-lossless" else None,
