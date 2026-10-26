@@ -4,6 +4,7 @@ import hashlib
 import json
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZipFile
 from urllib.error import HTTPError
 
 import pytest
@@ -50,6 +51,12 @@ def test_upstream_dashboard_and_drive_receipt_build_version_two_result(tmp_path:
     })
     (dashboard / "web-dashboard" / "index.html").write_text("<html>viewer</html>", encoding="utf-8")
     (dashboard / "web-dashboard" / "dashboard-data.js").write_text("window.DATA={};", encoding="utf-8")
+    bundle_path = dashboard / "aoi-derived-results.zip"
+    with ZipFile(bundle_path, "w") as bundle:
+        bundle.writestr("web-dashboard/index.html", "<html>viewer</html>")
+        bundle.writestr("web-dashboard/dashboard-data.js", "window.DATA={};")
+        bundle.writestr("web-dashboard/manifest.json", '{"schema_version":"sarguardian-web-dashboard/1.0"}')
+    bundle_content = bundle_path.read_bytes()
     products = [
         {"product_type": "GUNW", "granule_name": "NISAR_GUNW", "status": "PASS"},
         {"product_type": "GOFF", "granule_name": "NISAR_GOFF", "status": "PASS"},
@@ -69,13 +76,16 @@ def test_upstream_dashboard_and_drive_receipt_build_version_two_result(tmp_path:
         "products": products,
     })
     content = b"verified bundle"
+    uploaded = []
+    for index, name in enumerate(("aoi-derived-results.zip", "aoi-run-summary.json", "products.csv")):
+        data = bundle_content if name == "aoi-derived-results.zip" else content
+        uploaded.append({
+            "id": f"private-file-id-{index}", "name": name,
+            "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+        })
     write_json(tmp_path / "storage" / "drive-dashboard-upload-receipt.json", {
         "remote_verification": "PASS", "remote_folder_id": "private-folder-id",
-        "files": [
-            {"id": f"private-file-id-{index}", "name": name,
-             "bytes": len(content), "sha256": hashlib.sha256(content).hexdigest()}
-            for index, name in enumerate(("aoi-derived-results.zip", "aoi-run-summary.json", "products.csv"))
-        ],
+        "files": uploaded,
     })
 
     result = success_summary(tmp_path, "12345")
