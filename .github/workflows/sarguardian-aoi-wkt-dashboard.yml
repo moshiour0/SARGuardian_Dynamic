@@ -50,6 +50,31 @@ on:
         required: false
         type: string
         default: ''
+      place_name:
+        description: Optional map-selected place name for dashboard context.
+        required: false
+        type: string
+        default: ''
+      place_latitude:
+        description: Optional selected place latitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      place_longitude:
+        description: Optional selected place longitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      target_latitude:
+        description: Optional in-AOI measurement target latitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      target_longitude:
+        description: Optional in-AOI measurement target longitude (WGS84).
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       aoi_wkt:
@@ -100,6 +125,31 @@ on:
           - GUNW
           - GOFF
         default: BOTH
+      place_name:
+        description: Optional map-selected place name for dashboard context.
+        required: false
+        type: string
+        default: ''
+      place_latitude:
+        description: Optional selected place latitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      place_longitude:
+        description: Optional selected place longitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      target_latitude:
+        description: Optional in-AOI measurement target latitude (WGS84).
+        required: false
+        type: string
+        default: ''
+      target_longitude:
+        description: Optional in-AOI measurement target longitude (WGS84).
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -153,7 +203,7 @@ jobs:
         run: |
           set -euo pipefail
           python -m pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 45 -r science-source/requirements.txt
-          python -m pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 45 -r tools/requirements-retention.txt
+          python -m pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 45 -r dashboard-source/tools/requirements-retention.txt
           python -m pip install --disable-pip-version-check --no-cache-dir --retries 5 --timeout 45 rasterio matplotlib
 
       - name: Validate WKT, search ASF exact polygon and build input manifest
@@ -221,6 +271,8 @@ jobs:
       maturity: ${{ matrix.maturity }}
       expected_source_bytes: ${{ matrix.expected_source_bytes }}
       retention_profile: ${{ inputs.retention_profile }}
+      target_latitude: ${{ inputs.target_latitude }}
+      target_longitude: ${{ inputs.target_longitude }}
       execution_label: initial
       job_id: ${{ inputs.job_id }}
     secrets: inherit
@@ -299,6 +351,8 @@ jobs:
       maturity: ${{ matrix.maturity }}
       expected_source_bytes: ${{ matrix.expected_source_bytes }}
       retention_profile: ${{ inputs.retention_profile }}
+      target_latitude: ${{ inputs.target_latitude }}
+      target_longitude: ${{ inputs.target_longitude }}
       execution_label: retry-1
       job_id: ${{ inputs.job_id }}
     secrets: inherit
@@ -316,11 +370,32 @@ jobs:
       RUN_ID_SAFE: SARGuardian-AOI-${{ github.run_id }}-${{ github.run_attempt }}
       DRIVE_JOB_ID: ${{ inputs.job_id }}
       AOI_ORCHESTRATION_SHA: ${{ needs.manifest.outputs.orchestration_sha }}
+      SITE_PLACE_NAME: ${{ inputs.place_name }}
+      SITE_PLACE_LATITUDE: ${{ inputs.place_latitude }}
+      SITE_PLACE_LONGITUDE: ${{ inputs.place_longitude }}
+      SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}
+      SITE_TARGET_LONGITUDE: ${{ inputs.target_longitude }}
     steps:
-      - name: Checkout dashboard tools at the manifest's exact code revision
+      - name: Checkout orchestration tools at the manifest's exact code revision
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.manifest.outputs.orchestration_sha }}
+
+      - name: Checkout the immutable science dashboard builder and aggregator
+        uses: actions/checkout@v4
+        with:
+          repository: moshiour0/SARGuardian-backend
+          ref: efb299aa2fbe31ab8f6fe6ee796fd45dcfe853ce
+          path: dashboard-source
+
+      - name: Verify pinned dashboard builder and aggregation source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="efb299aa2fbe31ab8f6fe6ee796fd45dcfe853ce"
+          actual="$(git -C dashboard-source rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "DASHBOARD_BUILDER_SHA=$actual"
 
       - name: Checkout the same pinned science engine for WKT/provenance checks
         uses: actions/checkout@v4
@@ -372,7 +447,7 @@ jobs:
           root="$RUNNER_TEMP/sarguardian-aoi"
           mkdir -p "$root/dashboard"
           status=0
-          python tools/aggregate_aoi_run.py \
+          python dashboard-source/tools/aggregate_aoi_run.py \
             --manifest "$root/manifest/manifest.json" \
             --artifact-root "$root/product-artifacts" \
             --science-root "$PWD/science-source" \
