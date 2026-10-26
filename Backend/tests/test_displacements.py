@@ -377,11 +377,13 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "GITHUB_ACTIONS_REF": "main", "DISPLACEMENT_CALLBACK_SECRET": "callback-secret",
         "PUBLIC_API_URL": "https://api.example.test",
     })
-    request = CreateDisplacementJobRequest(**payload())
+    request = CreateDisplacementJobRequest(**(payload() | {
+        "place_name": "Rasuwa foothill", "place_latitude": 27.002, "place_longitude": 85.002,
+        "target_latitude": 27.002, "target_longitude": 85.002,
+    }))
     dispatch_workflow(settings, UUID("11111111-1111-1111-1111-111111111111"), request)
     assert captured["url"].endswith("/repos/owner/repository/actions/workflows/workflow.yml/dispatches")
     assert captured["authorization"] == "Bearer server-token"
-    request_model = CreateDisplacementJobRequest(**payload())
     assert captured["body"]["inputs"] == {
         "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
         "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
@@ -389,8 +391,8 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "acquisition_window": "secondary-acquisition-in-window",
         "retention_mode": "derived-only",
         "processing_profile": "full-aoi",
-        "place_name": "", "place_latitude": "", "place_longitude": "",
-        "target_latitude": "", "target_longitude": "",
+        "place_name": "Rasuwa foothill", "place_latitude": "27.002", "place_longitude": "85.002",
+        "target_latitude": "27.002", "target_longitude": "85.002",
     }
 
 
