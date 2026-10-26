@@ -85,6 +85,41 @@ def test_displacement_job_is_durable_dispatched_and_owner_scoped(monkeypatch) ->
     assert client(monkeypatch, store).get(f"/api/displacement-jobs/{store.row['id']}").status_code == 200
 
 
+def test_measurement_target_must_be_a_coordinate_pair_inside_the_exact_aoi(monkeypatch) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    valid = payload() | {
+        "place_name": "Rasuwa foothill",
+        "place_latitude": 27.002,
+        "place_longitude": 85.002,
+        "target_latitude": 27.002,
+        "target_longitude": 85.002,
+    }
+    accepted = api.post("/api/displacement-jobs", json=valid)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["place_name"] == "Rasuwa foothill"
+    assert accepted.json()["target_latitude"] == 27.002
+    assert accepted.json()["target_longitude"] == 85.002
+
+    incomplete = api.post("/api/displacement-jobs", json=payload() | {"target_latitude": 27.002})
+    assert incomplete.status_code == 422
+    outside = api.post("/api/displacement-jobs", json=payload() | {
+        "target_latitude": 27.009, "target_longitude": 85.009,
+    })
+    assert outside.status_code == 422
+    assert "inside" in outside.text.lower()
+
+
+def test_place_or_target_changes_the_immutable_request_fingerprint() -> None:
+    from app.displacements import request_fingerprint as fingerprint
+    first = payload() | {"place_name": "A", "place_latitude": 27.002, "place_longitude": 85.002,
+                         "target_latitude": 27.002, "target_longitude": 85.002}
+    second = first | {"target_latitude": 27.003}
+    third = first | {"place_name": "B"}
+    assert fingerprint(first) != fingerprint(second)
+    assert fingerprint(first) != fingerprint(third)
+
+
 def test_account_job_list_and_duplicate_active_request_reuse_the_existing_job(monkeypatch) -> None:
     store = DisplacementStore()
     dispatched: list[str] = []
@@ -167,6 +202,26 @@ def test_account_displacement_options_are_fixed_server_side(monkeypatch) -> None
 
     assert response.status_code == 422
     assert response.json()["detail"] == "Account displacement processing uses the fixed production processing contract."
+
+
+def test_failed_job_retry_preserves_place_and_measurement_target(monkeypatch) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    request = payload() | {
+        "place_name": "Rasuwa foothill", "place_latitude": 27.002, "place_longitude": 85.002,
+        "target_latitude": 27.002, "target_longitude": 85.002,
+    }
+    first = api.post("/api/displacement-jobs", json=request)
+    assert first.status_code == 200, first.text
+    store.update_displacement_job(UUID(first.json()["id"]), {"state": "failed", "stage": "science_failed"})
+    replacement = api.post(f"/api/displacement-jobs/{first.json()['id']}/resubmit",
+                           json={"idempotency_key": "displacement-location-retry-1", "confirm": True})
+    assert replacement.status_code == 200, replacement.text
+    assert replacement.json()["place_name"] == "Rasuwa foothill"
+    assert replacement.json()["place_latitude"] == 27.002
+    assert replacement.json()["place_longitude"] == 85.002
+    assert replacement.json()["target_latitude"] == 27.002
+    assert replacement.json()["target_longitude"] == 85.002
 
 
 def test_account_owner_can_cancel_an_active_job_without_creating_a_replacement(monkeypatch) -> None:
@@ -344,6 +399,8 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "date_filter_mode": "secondary-acquisition-in-window",
         "run_profile": "full-aoi-baseline",
         "retention_profile": "derived-only",
+        "place_name": "", "place_latitude": "", "place_longitude": "",
+        "target_latitude": "", "target_longitude": "",
     }
 
 
