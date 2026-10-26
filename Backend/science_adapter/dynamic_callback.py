@@ -8,6 +8,7 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+from zipfile import BadZipFile, ZipFile
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 import time
@@ -93,8 +94,27 @@ def success_summary(dashboard_root: Path, github_run_id: str) -> dict[str, Any]:
         web_dashboard = {"status": "NOT_AVAILABLE"}
     viewer_path = dashboard_dir / "web-dashboard" / "index.html"
     data_path = dashboard_dir / "web-dashboard" / "dashboard-data.js"
-    if web_dashboard.get("status") == "PASS" and not (viewer_path.is_file() and data_path.is_file()):
-        raise CallbackError("Dashboard receipt reports PASS but viewer files are missing from the uploaded workflow artifact.")
+    if web_dashboard.get("status") == "PASS":
+        dashboard_problem = None
+        if not (viewer_path.is_file() and data_path.is_file()):
+            dashboard_problem = "VIEWER_ASSETS_MISSING_FROM_WORKFLOW_ARTIFACT"
+        else:
+            bundle_path = dashboard_dir / "aoi-derived-results.zip"
+            try:
+                with ZipFile(bundle_path, "r") as bundle:
+                    bundle_names = bundle.namelist()
+                    required_assets = {
+                        "web-dashboard/index.html",
+                        "web-dashboard/dashboard-data.js",
+                        "web-dashboard/manifest.json",
+                    }
+                    if any(bundle_names.count(name) != 1 for name in required_assets):
+                        dashboard_problem = "VIEWER_ASSETS_MISSING_OR_DUPLICATED_IN_RESULT_BUNDLE"
+            except (OSError, BadZipFile):
+                dashboard_problem = "RESULT_BUNDLE_UNREADABLE_FOR_VIEWER_VALIDATION"
+        if dashboard_problem:
+            # Keep science/storage PASS separate from a presentation-only failure.
+            web_dashboard = {**web_dashboard, "status": "FAIL", "validation_error": dashboard_problem}
     products = report.get("products")
     files = receipt.get("files")
     processing_report = report.get("processing_report")
