@@ -20,11 +20,39 @@ export function polygonToWkt(value: unknown): string {
   return `POLYGON((${ring.map(([lng, lat]) => `${lng} ${lat}`).join(', ')}))`;
 }
 
-export type DisplacementPayload = { aoi_wkt: string; start_date: string; end_date: string };
+export type DisplacementPayload = {
+  aoi_wkt: string;
+  start_date: string;
+  end_date: string;
+  place_name: string | null;
+  place_latitude: number | null;
+  place_longitude: number | null;
+  target_latitude: number | null;
+  target_longitude: number | null;
+};
 export type InvestigationSelection = Parameters<typeof validateCatalogPreflight>[0];
 export type PreparedInvestigation = { valid: true; payload: DisplacementPayload } | { valid: false; errors: string[] };
+export type PlaceContext = { name: string; latitude: number; longitude: number } | null;
 
-export function prepareInvestigation(input: InvestigationSelection): PreparedInvestigation {
+function pointInPolygon(longitude: number, latitude: number, ring: Coordinate[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    // A point on a polygon edge is treated as inside for target eligibility.
+    const cross = (longitude - xi) * (yj - yi) - (latitude - yi) * (xj - xi);
+    const onSegment = Math.abs(cross) < 1e-10
+      && longitude >= Math.min(xi, xj) - 1e-10 && longitude <= Math.max(xi, xj) + 1e-10
+      && latitude >= Math.min(yi, yj) - 1e-10 && latitude <= Math.max(yi, yj) + 1e-10;
+    if (onSegment) return true;
+    const crosses = ((yi > latitude) !== (yj > latitude))
+      && longitude < ((xj - xi) * (latitude - yi)) / ((yj - yi) || Number.EPSILON) + xi;
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
+export function prepareInvestigation(input: InvestigationSelection & { place?: PlaceContext }): PreparedInvestigation {
   let wkt: string;
   try { wkt = polygonToWkt(input.coordinates); }
   catch (error) { return { valid: false, errors: [(error as Error).message] }; }
@@ -36,7 +64,26 @@ export function prepareInvestigation(input: InvestigationSelection): PreparedInv
   }
   const validation = validateCatalogPreflight(input);
   if (!validation.valid) return validation;
-  return { valid: true, payload: { aoi_wkt: wkt, start_date: input.startDate, end_date: input.endDate } };
+  const place = input.place;
+  const hasValidPlace = place !== null && place !== undefined
+    && Number.isFinite(place.latitude) && Number.isFinite(place.longitude)
+    && place.latitude >= -90 && place.latitude <= 90
+    && place.longitude >= -180 && place.longitude <= 180;
+  const selectedPointIsInside = Boolean(hasValidPlace && pointInPolygon(
+    place!.longitude, place!.latitude, input.coordinates,
+  ));
+  return { valid: true, payload: {
+    aoi_wkt: wkt,
+    start_date: input.startDate,
+    end_date: input.endDate,
+    place_name: hasValidPlace ? place!.name.trim().slice(0, 200) || null : null,
+    place_latitude: hasValidPlace ? place!.latitude : null,
+    place_longitude: hasValidPlace ? place!.longitude : null,
+    // A searched place is a measurement target only when the point is inside the
+    // exact AOI polygon. Location context alone must never imply an in-AOI sample.
+    target_latitude: selectedPointIsInside ? place!.latitude : null,
+    target_longitude: selectedPointIsInside ? place!.longitude : null,
+  } };
 }
 
 export async function copyPreparation(payload: DisplacementPayload, kind: 'wkt' | 'payload', writeText: (text: string) => Promise<void>): Promise<void> {
