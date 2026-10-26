@@ -240,7 +240,11 @@ export async function getProcessingJob(jobId: string, user: Pick<User, 'getIdTok
 }
 
 export async function createDisplacementJob(
-  input: { aoiWkt: string; startDate: string; endDate: string; idempotencyKey: string } & Partial<DisplacementProcessingOptions>,
+  input: {
+    aoiWkt: string; startDate: string; endDate: string; idempotencyKey: string;
+    place_name?: string | null; place_latitude?: number | null; place_longitude?: number | null;
+    target_latitude?: number | null; target_longitude?: number | null;
+  } & Partial<DisplacementProcessingOptions>,
   user: Pick<User, 'getIdToken'> | null,
 ): Promise<DisplacementJob> {
   return readAuthenticatedPayload<DisplacementJob>(
@@ -250,6 +254,11 @@ export async function createDisplacementJob(
         aoi_wkt: input.aoiWkt, start_date: input.startDate, end_date: input.endDate, idempotency_key: input.idempotencyKey,
         product_type: input.product_type, acquisition_window: input.acquisition_window,
         retention_mode: input.retention_mode, processing_profile: input.processing_profile,
+        place_name: input.place_name ?? null,
+        place_latitude: input.place_latitude ?? null,
+        place_longitude: input.place_longitude ?? null,
+        target_latitude: input.target_latitude ?? null,
+        target_longitude: input.target_longitude ?? null,
       }),
     },
   );
