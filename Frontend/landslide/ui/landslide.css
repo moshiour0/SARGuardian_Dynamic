@@ -997,3 +997,27 @@
 .scientific-results-actions button:disabled { cursor: wait; opacity: .72; }
 .scientific-results-note { margin: 0; color: rgba(231, 247, 255, .72); font-size: 12px; line-height: 1.5; max-width: 72ch; }
 .scientific-results-error { margin: 0; padding: 10px 12px; border: 1px solid rgba(255, 144, 131, .4); border-radius: 8px; color: #ffd7d1; background: rgba(92, 26, 25, .32); font-size: 12px; line-height: 1.45; }
+
+
+.scientific-dashboard-frame {
+  width: 100%;
+  height: min(78dvh, 980px);
+  min-height: 520px;
+  overflow: hidden;
+  border: 1px solid rgba(137, 220, 238, .28);
+  border-radius: 10px;
+  background: #071722;
+}
+.scientific-dashboard-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #071722;
+}
+@media (max-width: 640px) {
+  .scientific-dashboard-frame {
+    height: calc(100dvh - 190px);
+    min-height: 460px;
+  }
+}
