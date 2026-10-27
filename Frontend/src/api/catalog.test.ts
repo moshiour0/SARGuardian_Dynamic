@@ -18,7 +18,7 @@ describe('Authenticated interactive dashboard API contract', () => {
   const user = { getIdToken: vi.fn().mockResolvedValue('firebase-id-token') };
 
   it('passes the configured public Google Maps browser key and Firebase token', async () => {
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'AIzaSyDUMMY123456789012345678901234567');
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '  AIzaSyDUMMY123456789012345678901234567  ');
     const html = '<!doctype html><html><body>dashboard</body></html>';
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
