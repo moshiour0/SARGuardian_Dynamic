@@ -244,13 +244,19 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
       setManualTargetMessage('Enter a valid WGS84 latitude (−90 to 90) and longitude (−180 to 180).');
       return;
     }
+    if (!areaClosed || coordinates.length < 3) {
+      setManualTargetMessage('Load and close the AOI polygon before setting a measurement target.');
+      return;
+    }
+    const inside = isPointInsidePolygon(longitude, latitude, coordinates);
+    if (!inside) {
+      setManualTargetMessage('This coordinate is outside the current AOI. It was not accepted as a measurement target; move the point inside the polygon or correct the AOI.');
+      return;
+    }
     const name = manualTargetName.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
     onLocation({ searchText: name, name, latitude, longitude });
     onSearchText(name);
-    const inside = areaClosed && coordinates.length >= 3 && isPointInsidePolygon(longitude, latitude, coordinates);
-    setManualTargetMessage(inside
-      ? 'Selected coordinate is inside the current AOI. The worker will still validate target support and report whether a measurement is possible.'
-      : 'Place context saved. Target-local sampling is allowed only when the coordinate is inside the final closed AOI; outside points will not be measured.');
+    setManualTargetMessage('Selected coordinate is inside the current AOI. The worker will still validate raster support and report whether a measurement is possible.');
   };
 
   return (
