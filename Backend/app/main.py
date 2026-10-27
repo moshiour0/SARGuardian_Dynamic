@@ -1111,7 +1111,7 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
   };
   document.head.appendChild(script);
 });
-</script>""".replace("__GOOGLE_MAPS_API_KEY__", google_maps_api_key)
+</script>"""
 
 
 def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
@@ -1145,7 +1145,8 @@ def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
         module_marker = '<script type="module">'
         if module_marker not in html:
             raise ValueError("Interactive dashboard has no JavaScript module entry point.")
-        html = html.replace(module_marker, DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT + "\n" + module_marker, 1)
+        adapter_script = DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT.replace("__GOOGLE_MAPS_API_KEY__", google_maps_api_key)
+        html = html.replace(module_marker, adapter_script + "\n" + module_marker, 1)
     return html
 
 
