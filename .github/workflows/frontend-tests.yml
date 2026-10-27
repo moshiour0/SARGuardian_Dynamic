@@ -1,4 +1,5 @@
 name: Frontend build, lint and tests
+# Includes inline Google Maps dashboard rendering in the Processing workspace.
 
 on:
   pull_request:
@@ -7,7 +8,7 @@ on:
       - "Frontend/**"
       - ".github/workflows/frontend-tests.yml"
   push:
-    branches: [main, feat/in-app-interactive-dashboard]
+    branches: [main, feat/in-app-interactive-dashboard, fix/manual-aoi-target-fallback-20261027, fix/google-dashboard-in-frontend-20261028]
     paths:
       - "Frontend/**"
       - ".github/workflows/frontend-tests.yml"

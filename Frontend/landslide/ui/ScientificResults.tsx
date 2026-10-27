@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { DisplacementJob } from '../../src/api/catalog';
 import { getInteractiveDashboardHtml } from '../../src/api/catalog';
-import { writeDashboardHtml } from './dashboardPopup';
 
 function driveFolderUrl(job: DisplacementJob): string | undefined {
   if (job.state !== 'succeeded' || !job.result_summary) return undefined;
@@ -32,46 +31,23 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
   const folderUrl = driveFolderUrl(job);
   const canOpenDashboard = dashboardAvailable(job);
   const [opening, setOpening] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [dashboardHtml, setDashboardHtml] = useState<string | null>(null);
   const [dashboardError, setDashboardError] = useState('');
 
-  async function openDashboard() {
-    setDashboardError('');
-    // Open synchronously from the click so popup blockers do not swallow the
-    // authenticated fetch that follows. The new tab receives only verified HTML.
-    const popup = window.open('about:blank', '_blank');
-    if (!popup) {
-      setDashboardError('The browser blocked the new tab. Allow pop-ups for SARGuardian and try again.');
+  async function loadDashboard() {
+    if (dashboardHtml) {
+      setExpanded((current) => !current);
       return;
     }
-    try {
-      popup.opener = null;
-      popup.document.title = 'SARGuardian · Interactive dashboard';
-      popup.document.body.textContent = 'Verifying the private result bundle and preparing the interactive dashboard…';
-    } catch {
-      // Continue with the navigation below; some browser privacy modes restrict
-      // access to a newly opened blank document.
-    }
-
+    setDashboardError('');
     setOpening(true);
     try {
       const html = await getInteractiveDashboardHtml(job.id, user);
-      // Keep the popup at the Vercel-origin about:blank document instead of
-      // navigating to a blob: URL. Google Maps HTTP-referrer restrictions then
-      // see the same site origin as the AOI-selection map.
-      writeDashboardHtml(popup, html);
+      setDashboardHtml(html);
+      setExpanded(true);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Could not open the interactive dashboard.';
-      setDashboardError(message);
-      try {
-        popup.document.open();
-        popup.document.write('<!doctype html><html lang="en"><meta charset="utf-8"><title>SARGuardian dashboard unavailable</title><body style="font:16px system-ui;padding:24px"><h1>Dashboard unavailable</h1><p id="message"></p></body></html>');
-        const messageNode = popup.document.getElementById('message');
-        if (messageNode) messageNode.textContent = message;
-        popup.document.close();
-      } catch {
-        // The in-app status below still reports the failure when the popup is
-        // not writable (for example, if navigation already began).
-      }
+      setDashboardError(error instanceof Error ? error.message : 'Could not load the interactive dashboard.');
     } finally {
       setOpening(false);
     }
@@ -85,10 +61,11 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
           <button
             className="investigate-button validated-output-link"
             type="button"
-            onClick={() => { void openDashboard(); }}
+            onClick={() => { void loadDashboard(); }}
             disabled={opening}
+            aria-expanded={expanded}
           >
-            {opening ? 'Opening dashboard…' : 'Open interactive dashboard'}
+            {opening ? 'Loading dashboard…' : expanded ? 'Hide dashboard' : dashboardHtml ? 'Show dashboard' : 'Load dashboard in Processing'}
           </button>
         )}
         {folderUrl && (
@@ -97,8 +74,20 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
           </a>
         )}
       </div>
-      {canOpenDashboard && <p className="scientific-results-note">The map and playback use the verified result bundle. Processing PASS is not independent geophysical validation; limitations remain visible in the dashboard.</p>}
+      {canOpenDashboard && <p className="scientific-results-note">The dashboard is embedded here in Processing. Google Maps and georeferenced science layers use the verified result bundle. Processing PASS is not independent geophysical validation.</p>}
       {dashboardError && <p className="scientific-results-error" role="alert">{dashboardError}</p>}
+      {expanded && dashboardHtml && (
+        <div className="scientific-dashboard-frame" aria-label="Interactive scientific dashboard">
+          <iframe
+            title="SARGuardian interactive scientific dashboard"
+            srcDoc={dashboardHtml}
+            referrerPolicy="origin"
+            sandbox="allow-scripts allow-forms allow-popups"
+            allow="fullscreen"
+            loading="lazy"
+          />
+        </div>
+      )}
     </section>
   );
 }

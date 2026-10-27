@@ -154,9 +154,12 @@ export async function getInteractiveDashboardHtml(
 ): Promise<string> {
   const safeId = jobId.trim();
   if (!/^[0-9a-f-]{36}$/i.test(safeId)) throw new Error('Invalid displacement job ID.');
-  const configuredMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  const mapsApiKey = configuredMapsApiKey?.trim();
-  if (!mapsApiKey) throw new Error('Google Maps is not configured. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.');
+  // This is the same browser key the AOI-selection map uses. It is not a
+  // server secret; access must be limited by Google Cloud website/API restrictions.
+  const mapsApiKey = (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined)?.trim();
+  if (!mapsApiKey) {
+    throw new Error('Google Maps is not configured. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.');
+  }
   const token = await getFirebaseIdToken(user);
   let response: Response;
   try {

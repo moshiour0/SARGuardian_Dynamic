@@ -17,8 +17,8 @@ afterEach(() => {
 describe('Authenticated interactive dashboard API contract', () => {
   const user = { getIdToken: vi.fn().mockResolvedValue('firebase-id-token') };
 
-  it('passes the configured public Google Maps browser key and Firebase token', async () => {
-    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '  AIzaSyDUMMY123456789012345678901234567  ');
+  it('sends the Firebase token and the same restricted Google Maps browser key as AOI selection', async () => {
+    vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', 'AIzaSyFakeRestrictedKey123456789012345');
     const html = '<!doctype html><html><body>dashboard</body></html>';
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -33,12 +33,11 @@ describe('Authenticated interactive dashboard API contract', () => {
     expect(fetchMock.mock.calls[0][1].headers).toEqual({
       Authorization: 'Bearer firebase-id-token',
       Accept: 'text/html',
-      'X-SARGuardian-Google-Maps-Key': 'AIzaSyDUMMY123456789012345678901234567',
+      'X-SARGuardian-Google-Maps-Key': 'AIzaSyFakeRestrictedKey123456789012345',
     });
     expect(fetchMock.mock.calls[0][1].cache).toBe('no-store');
   });
-
-  it('does not call the backend when Google Maps browser key is missing', async () => {
+  it('does not request dashboard HTML when the frontend Maps key is missing', async () => {
     vi.stubEnv('VITE_GOOGLE_MAPS_API_KEY', '');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -47,6 +46,7 @@ describe('Authenticated interactive dashboard API contract', () => {
       .rejects.toThrow('Google Maps is not configured');
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
 });
 
 describe('NISAR catalogue preflight API contract', () => {

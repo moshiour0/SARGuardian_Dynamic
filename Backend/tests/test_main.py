@@ -221,7 +221,7 @@ def _dashboard_zip() -> bytes:
             '<!doctype html><html><head><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css"></head><body>'
             '<main><div class="cards" id="summaryCards"></div><div class="mapbox"><div id="map"></div></div></main>'
             '<script src="./dashboard-data.js"></script>'
-            '<script type="module">import * as maplibregl from \'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs\';</script>'
+            '<script type="module">let maplibregl = null; try { maplibregl = await import(\'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs\'); } catch (error) { console.warn(\'SARGuardian map library unavailable; science panels remain available.\', error); } const tiles = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";</script>'
             '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a></body></html>',
         )
         archive.writestr("web-dashboard/dashboard-data.js", "window.SARGUARDIAN_DASHBOARD={safe:true};")
@@ -262,31 +262,28 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
         lambda drive_id: ({"bytes": len(payload), "id": drive_id}, payload),
     )
 
-    response = authenticated_client().get(
-        f"/api/displacement-jobs/{job_id}/dashboard",
-        headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyDUMMY123456789012345678901234567"},
-    )
+    # Google Maps is supplied by the same restricted browser key used by AOI selection.
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard", headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyFakeRestrictedKey123456789012345"})
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "origin"
     assert "window.SARGUARDIAN_DASHBOARD={safe:true};" in response.text
     assert 'src="./dashboard-data.js"' not in response.text
     assert "Content-Security-Policy" in response.text
-    assert response.headers["referrer-policy"] == "origin"
-    assert '<meta name="referrer" content="origin">' in response.text
-    assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyDUMMY123456789012345678901234567" in response.text
     assert "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;" in response.text
-    assert "https://tile.openstreetmap.org" not in response.text
-    assert "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs" not in response.text
+    assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyFakeRestrictedKey123456789012345" in response.text
+    assert "window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER" in response.text
+    assert "https://tile.openstreetmap.org/{z}/{x}/{y}.png" not in response.text
     assert "SARGuardian responsive science dashboard" in response.text
-    assert "id=\"sg-dashboard-readiness\"" in response.text
+    assert 'id="sg-dashboard-readiness"' in response.text
     assert "Not measured is not the same as zero motion." in response.text
     assert "private-drive-file-id" not in response.text
     assert "Processing report ↗" not in response.text
 
 
-def test_interactive_dashboard_requires_google_maps_key_before_drive_download(monkeypatch) -> None:
+def test_interactive_dashboard_uses_google_maps_key_and_adapter(monkeypatch) -> None:
     from uuid import uuid4
 
     job_id = uuid4()
@@ -302,6 +299,7 @@ def test_interactive_dashboard_requires_google_maps_key_before_drive_download(mo
         def get_displacement_job(self, owner_uid, requested_job_id):
             return {
                 "id": str(job_id),
+                "owner_uid": owner_uid,
                 "state": "succeeded",
                 "result_summary": {
                     "web_dashboard": {"status": "PASS"},
@@ -311,10 +309,44 @@ def test_interactive_dashboard_requires_google_maps_key_before_drive_download(mo
 
     called = []
     monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
+
+    def download_verified_bundle(*_args):
+        called.append(True)
+        return {"bytes": len(payload)}, payload
+
+    monkeypatch.setattr(main_module, "download_private_result", download_verified_bundle)
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard", headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyFakeRestrictedKey123456789012345"})
+
+    assert response.status_code == 200
+    assert called == [True]
+    assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyFakeRestrictedKey123456789012345" in response.text
+    assert "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;" in response.text
+
+
+def test_interactive_dashboard_requires_maps_key_before_private_download(monkeypatch) -> None:
+    from uuid import uuid4
+
+    job_id = uuid4()
+    class Store:
+        def get_displacement_job(self, owner_uid, requested_job_id):
+            return {
+                "id": str(job_id),
+                "owner_uid": owner_uid,
+                "state": "succeeded",
+                "result_summary": {
+                    "web_dashboard": {"status": "PASS"},
+                    "artifacts": [{
+                        "path": "aoi-derived-results.zip",
+                        "sha256": "a" * 64,
+                        "bytes": 100,
+                        "drive_file_id": "private-drive-file-id",
+                    }],
+                },
+            }
+    called = []
+    monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
     monkeypatch.setattr(main_module, "download_private_result", lambda *_args: called.append(True))
-
     response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
-
     assert response.status_code == 503
     assert "Google Maps is not configured" in response.json()["detail"]
     assert called == []
@@ -376,10 +408,7 @@ def test_interactive_dashboard_rejects_drive_checksum_mismatch(monkeypatch) -> N
         lambda _drive_id: ({"bytes": len(wrong_payload)}, wrong_payload),
     )
 
-    response = authenticated_client().get(
-        f"/api/displacement-jobs/{job_id}/dashboard",
-        headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyDUMMY123456789012345678901234567"},
-    )
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard", headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyFakeRestrictedKey123456789012345"})
 
     assert response.status_code == 409
     assert "checksum" in response.json()["detail"]

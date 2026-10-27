@@ -4,7 +4,7 @@ import type { User } from 'firebase/auth';
 import { analyzeGunwAoiQuality, createDisplacementJob, createQueuedJob, DEFAULT_DISPLACEMENT_OPTIONS, getNisarHarmonyJobStatus, getProcessingJob, inspectNisarAoiWindow, listProcessingJobs, searchNisarCatalog, startGunwQualityLayers, startNisarHarmonyLayerJob, verifyGunwNativeSourceMask } from '../../src/api/catalog';
 import type { AoiWindowResponse, CatalogProduct, CatalogResponse, GunwQualityAnalysisResponse, HarmonyLayerRole, HarmonyQualityLayerBundle, HarmonyQualityLayerJob, NativeSourceMaskVerificationResponse, NisarProductType, ProcessingJob, SubmittedHarmonyLayerJob } from '../../src/api/catalog';
 import { calculateGeodesicAreaKm2, canSubmitCatalogPreflight, validatePolyline } from '../engine/validation';
-import { prepareInvestigation } from '../engine/investigation';
+import { isPointInsidePolygon, parsePolygonWkt, prepareInvestigation } from '../engine/investigation';
 import { DisplacementPreparation } from './DisplacementPreparation';
 import { countCatalogGranules, type GranuleCounts } from './processingStatus';
 import { scheduleErrorToastDismissal } from './errorToast';
@@ -46,6 +46,12 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
   const autocompleteRef = useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
   const [readyMap, setReadyMap] = useState<google.maps.Map | null>(null);
   const [mapError, setMapError] = useState('');
+  const [manualAoiWkt, setManualAoiWkt] = useState('');
+  const [manualAoiError, setManualAoiError] = useState('');
+  const [manualTargetName, setManualTargetName] = useState(location?.name ?? '');
+  const [manualTargetLatitude, setManualTargetLatitude] = useState(location ? String(location.latitude) : '');
+  const [manualTargetLongitude, setManualTargetLongitude] = useState(location ? String(location.longitude) : '');
+  const [manualTargetMessage, setManualTargetMessage] = useState('');
   const initialAoiRef = useRef(coordinates);
   const [aoiOverlays] = useState(() => createAoiOverlayController({
     onCoordinates: (next, closed) => onCoordinatesRef.current(next, closed),
@@ -60,6 +66,13 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
   onSelectedVertexRef.current = onSelectedVertex;
   onSearchTextRef.current = onSearchText;
 
+  // Keep the manual target fields aligned with place search, including when the map API fails.
+  useEffect(() => {
+    setManualTargetName(location?.name ?? '');
+    setManualTargetLatitude(location ? String(location.latitude) : '');
+    setManualTargetLongitude(location ? String(location.longitude) : '');
+  }, [location]);
+
   useEffect(() => {
     let active = true;
     let mapClickListener: google.maps.MapsEventListener | undefined;
@@ -67,7 +80,7 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
     const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
 
     if (!apiKey) {
-      setMapError('Google Maps is not configured. Location search and saved investigation details remain available.');
+      setMapError('Google Maps is not configured. Use the manual AOI WKT and target coordinate fields below to continue without the map.');
       return undefined;
     }
 
@@ -155,7 +168,7 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
         }
       })
       .catch(() => {
-        if (active) setMapError('Google Maps could not load. Check the connection and Maps JavaScript API access.');
+        if (active) setMapError('Google Maps could not load. Check the connection and Maps JavaScript API access, or continue with the manual AOI and target fields below.');
       });
 
     return () => {
@@ -208,6 +221,44 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
     } else if (center) readyMap.setCenter(center);
   }, [isVisible, readyMap]);
 
+  const applyManualAoi = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      const parsed = parsePolygonWkt(manualAoiWkt);
+      onCoordinates(parsed, true);
+      setManualAoiError('');
+      setManualTargetMessage('AOI loaded from WKT. Confirm that any target coordinate lies inside this exact polygon before submitting.');
+    } catch (parseError) {
+      setManualAoiError(parseError instanceof Error ? parseError.message : 'Could not parse this AOI WKT.');
+    }
+  };
+
+  const applyManualTarget = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const latitudeText = manualTargetLatitude.trim();
+    const longitudeText = manualTargetLongitude.trim();
+    const latitude = Number(latitudeText);
+    const longitude = Number(longitudeText);
+    if (!latitudeText || !longitudeText || !Number.isFinite(latitude) || !Number.isFinite(longitude)
+      || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      setManualTargetMessage('Enter a valid WGS84 latitude (−90 to 90) and longitude (−180 to 180).');
+      return;
+    }
+    if (!areaClosed || coordinates.length < 3) {
+      setManualTargetMessage('Load and close the AOI polygon before setting a measurement target.');
+      return;
+    }
+    const inside = isPointInsidePolygon(longitude, latitude, coordinates);
+    if (!inside) {
+      setManualTargetMessage('This coordinate is outside the current AOI. It was not accepted as a measurement target; move the point inside the polygon or correct the AOI.');
+      return;
+    }
+    const name = manualTargetName.trim() || `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`;
+    onLocation({ searchText: name, name, latitude, longitude });
+    onSearchText(name);
+    setManualTargetMessage('Selected coordinate is inside the current AOI. The worker will still validate raster support and report whether a measurement is possible.');
+  };
+
   return (
     <div className="map-canvas-wrap" aria-busy={!readyMap && !mapError}>
       <div ref={containerRef} className="google-map" aria-label="Interactive investigation map" />
@@ -215,10 +266,29 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
         <div className="map-loading" role="status"><span className="workspace-status-dot" />Connecting to Google Maps…</div>
       )}
       {mapError && (
-        <div className="map-unavailable" role="status">
+        <div className="map-unavailable map-recovery" role="region" aria-label="Map unavailable; manual AOI and target entry">
           <span>MAP CONNECTION</span>
-          <strong>The map is unavailable.</strong>
+          <strong>The map is unavailable. Continue without it.</strong>
           <small>{mapError}</small>
+          <p>Use WGS84 coordinates: AOI WKT vertices are <code>longitude latitude</code>; target fields are entered as latitude and longitude. No target is guessed automatically.</p>
+          <form className="map-recovery-form" onSubmit={applyManualAoi}>
+            <label htmlFor="manual-aoi-wkt">AOI polygon (single-ring WKT)</label>
+            <textarea id="manual-aoi-wkt" rows={4} value={manualAoiWkt} onChange={(event) => setManualAoiWkt(event.target.value)} placeholder="POLYGON ((85.50 28.26, 85.51 28.26, 85.51 28.27, 85.50 28.26))" />
+            <button type="submit">Load AOI polygon</button>
+            {manualAoiError && <small className="map-recovery-error" role="alert">{manualAoiError}</small>}
+          </form>
+          <form className="map-recovery-form" onSubmit={applyManualTarget}>
+            <label htmlFor="manual-target-name">Place / target name (optional)</label>
+            <input id="manual-target-name" value={manualTargetName} onChange={(event) => setManualTargetName(event.target.value)} placeholder="Name for this measurement point" />
+            <div className="map-recovery-coordinate-grid">
+              <label htmlFor="manual-target-latitude">Target latitude</label>
+              <input id="manual-target-latitude" inputMode="decimal" value={manualTargetLatitude} onChange={(event) => setManualTargetLatitude(event.target.value)} placeholder="28.265000" />
+              <label htmlFor="manual-target-longitude">Target longitude</label>
+              <input id="manual-target-longitude" inputMode="decimal" value={manualTargetLongitude} onChange={(event) => setManualTargetLongitude(event.target.value)} placeholder="85.500000" />
+            </div>
+            <button type="submit">Use target coordinates</button>
+            {manualTargetMessage && <small className="map-recovery-message" role="status">{manualTargetMessage}</small>}
+          </form>
         </div>
       )}
       {drawing && readyMap && <div className="draw-hint">Trace your area. Select the first vertex or Close area to finish.</div>}

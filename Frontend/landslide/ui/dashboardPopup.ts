@@ -1,7 +1,7 @@
 /**
- * Write verified dashboard HTML into the same-origin about:blank popup.
- * Navigating to a blob: URL may change the Referer Google Maps sees and fail
- * HTTP-referrer-restricted browser keys even when the AOI selection map works.
+ * Write the owner-verified dashboard HTML into a same-origin about:blank popup.
+ * This keeps the authenticated result viewer in the site's origin rather than
+ * navigating to a blob URL; the viewer's MapLibre basemap does not require a Google Maps key.
  */
 export function writeDashboardHtml(popup: Pick<Window, 'document'>, html: string): void {
   popup.document.open();

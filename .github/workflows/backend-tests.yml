@@ -1,4 +1,5 @@
 name: Backend tests
+# Includes verified Google Maps adapter/key-contract tests for dashboard HTML.
 
 on:
   pull_request:
@@ -11,6 +12,8 @@ on:
     branches:
       - main
       - fix/supabase-github-migrations
+      - fix/manual-aoi-target-fallback-20261027
+      - fix/google-dashboard-in-frontend-20261028
     paths:
       - "Backend/**"
       - "docs/DISPLACEMENT_ACTIONS.md"

@@ -757,7 +757,10 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
       "No display name is attached to this run. A product CRID is provenance metadata, not evidence that target-local motion was measured.":
       "Named place context is attached. Check each selected pair before interpreting target-specific values.";
     if(targetStatus==="IN_AOI_TARGET_CAPTURED")targetDescription+=" A target coordinate is recorded inside the AOI.";
-    else if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
+    else {
+      targetDescription+=" No valid in-AOI measurement target was recorded for this run. To report target-local displacement and local detection floors, perform a target-aware measurement pass with both target_latitude and target_longitude set to an explicit WGS84 point inside this polygon. Do not substitute the AOI center or product CRID for a target coordinate.";
+      if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
+    }
     var rows=[
       {label:"Target-local displacement",value:measurements+" / "+obs.length+" pairs measured",note:measurements===0?"Not measured is not the same as zero motion. No target-local LOS/range/along-track displacement is reported for these pairs.":"Only pairs marked MEASURED are counted; do not fill missing pairs with zero.",good:measurements>0},
       {label:"Local detection floor",value:floors+" / "+obs.length+" pairs measured",note:floors===0?"No measured target-local detection floor is available. A missing floor is not a 0 mm/day threshold.":"Noise/detectability bounds are not observed displacement or velocity.",good:floors>0},
@@ -1062,32 +1065,44 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
 </script>"""
 
 
+
 def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
-    """Use the same Google Maps JS API as AOI selection while preserving georeferenced raster overlays."""
-    maplibre_import = "import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs';"
-    if maplibre_import not in html:
-        raise ValueError("Interactive dashboard does not match the supported Google Maps migration contract.")
+    """Use the AOI workspace's Google Maps API while retaining georeferenced science overlays."""
+    static_import = "import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs';"
+    dynamic_import = re.compile(
+        r"let maplibregl = null;\s*try\s*\{\s*"
+        r"maplibregl = await import\('https://unpkg\.com/maplibre-gl@6\.16\.0/dist/maplibre-gl\.mjs'\);\s*"
+        r"\}\s*catch\s*\(error\)\s*\{\s*"
+        r"console\.warn\('SARGuardian map library unavailable; science panels remain available\.', error\);\s*\}\s*"
+    )
+    adapter_import = "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;"
+
+    if static_import in html:
+        html = html.replace(static_import, adapter_import, 1)
+    else:
+        html, replaced = dynamic_import.subn(adapter_import + "\n", html, count=1)
+        if replaced != 1:
+            raise ValueError("Interactive dashboard does not match the supported Google Maps migration contract.")
 
     html = html.replace('<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css">', "")
-    html = html.replace(maplibre_import, "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;", 1)
     html = html.replace("https://tile.openstreetmap.org/{z}/{x}/{y}.png", "")
     html = html.replace("© OpenStreetMap contributors.", "Google Maps basemap.")
     html = html.replace(
         "The processing report and georeferenced assets remain in this bundle; the basemap/MapLibre library requires an internet connection.",
-        "Google Maps could not load. Check API access and allowed referrers; the processing report and georeferenced assets remain available."
+        "Google Maps could not load. Check API access and allowed referrers; the processing report and georeferenced assets remain available.",
     )
     html = html.replace(
         "Basemap tiles are blocked or unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas.",
-        "Google Maps is unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas."
+        "Google Maps is unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas.",
     )
     html = html.replace('content="strict-origin-when-cross-origin"', 'content="origin"')
     html = html.replace(
-        'script-src \'unsafe-inline\' https://unpkg.com;',
-        'script-src \'unsafe-inline\' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;'
+        "script-src 'unsafe-inline' https://unpkg.com;",
+        "script-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;",
     )
     html = html.replace(
-        'style-src \'unsafe-inline\' https://unpkg.com;',
-        'style-src \'unsafe-inline\' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;'
+        "style-src 'unsafe-inline' https://unpkg.com;",
+        "style-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;",
     )
     if "https://maps.googleapis.com/maps/api/js?key=" not in html:
         module_marker = '<script type="module">'
@@ -1133,22 +1148,17 @@ async def get_displacement_dashboard(
     artifact = matches[0]
     if artifact["bytes"] > MAX_DASHBOARD_ARCHIVE_BYTES:
         raise HTTPException(status_code=413, detail="This dashboard bundle is too large to open in the interactive viewer. Download the result package instead.")
-    raw_maps_key = google_maps_api_key if isinstance(google_maps_api_key, str) else ""
-    google_maps_api_key = raw_maps_key.strip()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", google_maps_api_key):
-        # Never log the browser key itself; only non-secret shape diagnostics.
-        logger.warning(
-            "Dashboard Google Maps key rejected: present=%s raw_length=%d normalized_length=%d surrounding_whitespace=%s",
-            bool(raw_maps_key),
-            len(raw_maps_key),
-            len(google_maps_api_key),
-            raw_maps_key != google_maps_api_key,
-        )
+    if not isinstance(google_maps_api_key, str):
         raise HTTPException(
             status_code=503,
-            detail="Google Maps is not configured for the dashboard. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.",
+            detail="Google Maps is not configured. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.",
         )
-
+    google_maps_api_key = google_maps_api_key.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", google_maps_api_key):
+        raise HTTPException(
+            status_code=503,
+            detail="Google Maps is not configured. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.",
+        )
     try:
         received, data = download_private_result(artifact["drive_file_id"])
     except DriveUploadError as exc:
@@ -1201,8 +1211,6 @@ async def get_displacement_dashboard(
     return Response(content=html, media_type="text/html", headers={
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
-        # Google Maps HTTP-referrer restrictions need the site origin, not the
-        # private blob path or dashboard bundle URL.
         "Referrer-Policy": "origin",
     })
 

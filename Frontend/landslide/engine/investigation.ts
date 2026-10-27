@@ -20,6 +20,38 @@ export function polygonToWkt(value: unknown): string {
   return `POLYGON((${ring.map(([lng, lat]) => `${lng} ${lat}`).join(', ')}))`;
 }
 
+// Parse only a single-ring WGS84 POLYGON; geometry with holes or multiple parts is rejected.
+export function parsePolygonWkt(value: string): Coordinate[] {
+  const match = /^\s*POLYGON\s*\(\s*\(([^()]*)\)\s*\)\s*$/i.exec(value);
+  if (!match) throw new Error('Enter one WGS84 POLYGON ((longitude latitude, ...)); holes and MULTIPOLYGON are not supported.');
+  const points = match[1].split(',').map((pair): Coordinate => {
+    const values = pair.trim().split(/\s+/);
+    const numberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+    if (values.length !== 2 || values.some((item) => !numberPattern.test(item))) {
+      throw new Error('Each WKT vertex must contain exactly two valid numeric values: longitude and latitude.');
+    }
+    const longitude = Number(values[0]);
+    const latitude = Number(values[1]);
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)
+      || longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+      throw new Error('WKT vertices must be finite WGS84 longitude/latitude values.');
+    }
+    return [longitude, latitude];
+  });
+  // WKT LinearRings must be explicitly closed; do not silently repair malformed input.
+  if (points.length < 4 || points[0][0] !== points[points.length - 1][0]
+    || points[0][1] !== points[points.length - 1][1]) {
+    throw new Error('AOI WKT polygon ring must be closed by repeating its first longitude/latitude vertex.');
+  }
+  points.pop();
+  if (new Set(points.map(([longitude, latitude]) => `${longitude},${latitude}`)).size < 3) {
+    throw new Error('AOI WKT needs at least three distinct vertices.');
+  }
+  // Reuse the same strict geometry validation as the interactive-map path.
+  polygonToWkt(points);
+  return points;
+}
+
 export type DisplacementPayload = {
   aoi_wkt: string;
   start_date: string;
@@ -34,7 +66,7 @@ export type InvestigationSelection = Parameters<typeof validateCatalogPreflight>
 export type PreparedInvestigation = { valid: true; payload: DisplacementPayload } | { valid: false; errors: string[] };
 export type PlaceContext = { name: string; latitude: number; longitude: number } | null;
 
-function pointInPolygon(longitude: number, latitude: number, ring: Coordinate[]): boolean {
+export function isPointInsidePolygon(longitude: number, latitude: number, ring: Coordinate[]): boolean {
   let inside = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
     const [xi, yi] = ring[i];
@@ -69,7 +101,7 @@ export function prepareInvestigation(input: InvestigationSelection & { place?: P
     && Number.isFinite(place.latitude) && Number.isFinite(place.longitude)
     && place.latitude >= -90 && place.latitude <= 90
     && place.longitude >= -180 && place.longitude <= 180;
-  const selectedPointIsInside = Boolean(hasValidPlace && pointInPolygon(
+  const selectedPointIsInside = Boolean(hasValidPlace && isPointInsidePolygon(
     place!.longitude, place!.latitude, input.coordinates,
   ));
   return { valid: true, payload: {
