@@ -11,6 +11,7 @@ on:
     branches:
       - main
       - fix/supabase-github-migrations
+      - fix/manual-aoi-target-fallback-20261027
     paths:
       - "Backend/**"
       - "docs/DISPLACEMENT_ACTIONS.md"
