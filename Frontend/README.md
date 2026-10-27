@@ -67,7 +67,7 @@ The frontend now has two clearly separated actions in the Landslide workspace:
 The metadata preflight does not download products or detect movement. The full
 scientific processing pipeline is not connected yet.
 
-## বাংলা নির্দেশনা
+## বাংলা নির্দেশনা:
 
 এটি আগের frontend-এর আলাদা কপি। ZIP extract করে এই ফোল্ডারে terminal খুলুন,
 তারপর `npm ci` এবং `npm run dev` চালান। Browser-এ `http://localhost:5173`
