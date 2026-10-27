@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from app import main as main_module
 from app.auth import get_current_user
 from app.config import get_settings
-from app.displacements import CreateDisplacementJobRequest, GitHubDispatchError, cancel_workflow_run, dispatch_workflow, find_dispatched_workflow_run, is_dispatch_timed_out
+from app.displacements import CreateDisplacementJobRequest, GitHubDispatchError, cancel_workflow_run, dispatch_workflow, find_dispatched_workflow_run, is_dispatch_timed_out, request_fingerprint as displacement_request_fingerprint
 from app.main import app
 
 
@@ -355,7 +355,7 @@ def test_private_artifact_download_requires_owner_and_rechecks_hash(monkeypatch)
     assert api.get(f"/api/displacement-jobs/{created['id']}/artifacts/0").status_code == 409
 
 
-def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
+def test_dispatch_uses_legacy_dashboard_contract_when_configured(monkeypatch) -> None:
     captured: dict = {}
 
     class Response:
@@ -373,7 +373,8 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
     monkeypatch.setattr("app.displacements.urlopen", fake_urlopen)
     settings = get_settings({
         "DISPLACEMENT_ACTIONS_ENABLED": "true", "GITHUB_ACTIONS_TOKEN": "server-token",
-        "GITHUB_ACTIONS_REPOSITORY": "owner/repository", "GITHUB_ACTIONS_WORKFLOW": "workflow.yml",
+        "GITHUB_ACTIONS_REPOSITORY": "moshiour0/SARGuardian-backend",
+        "GITHUB_ACTIONS_WORKFLOW": "sarguardian-aoi-wkt-dashboard.yml",
         "GITHUB_ACTIONS_REF": "main", "DISPLACEMENT_CALLBACK_SECRET": "callback-secret",
         "PUBLIC_API_URL": "https://api.example.test",
     })
@@ -381,20 +382,86 @@ def test_dispatch_uses_only_configured_server_values(monkeypatch) -> None:
         "place_name": "Rasuwa foothill", "place_latitude": 27.002, "place_longitude": 85.002,
         "target_latitude": 27.002, "target_longitude": 85.002,
     }))
-    dispatch_workflow(settings, UUID("11111111-1111-1111-1111-111111111111"), request)
-    assert captured["url"].endswith("/repos/owner/repository/actions/workflows/workflow.yml/dispatches")
+    job_id = UUID("11111111-1111-1111-1111-111111111111")
+    dispatch_workflow(settings, job_id, request)
+    assert captured["url"].endswith(
+        "/repos/moshiour0/SARGuardian-backend/actions/workflows/sarguardian-aoi-wkt-dashboard.yml/dispatches"
+    )
     assert captured["authorization"] == "Bearer server-token"
+    inputs = captured["body"]["inputs"]
+    assert inputs == {
+        "job_id": str(job_id),
+        "aoi_wkt": payload()["aoi_wkt"],
+        "start_date": "2026-10-01",
+        "end_date": "2026-10-22",
+        "callback_url": "https://api.example.test",
+        "request_fingerprint": displacement_request_fingerprint(request.model_dump()),
+        "date_filter_mode": "secondary-acquisition-in-window",
+        "run_profile": "full-aoi-baseline",
+        "retention_profile": "derived-only",
+        "place_name": "Rasuwa foothill",
+        "place_latitude": "27.002",
+        "place_longitude": "85.002",
+        "target_latitude": "27.002",
+        "target_longitude": "85.002",
+    }
+    assert not {"product_type", "acquisition_window", "retention_mode", "processing_profile"} & set(inputs)
+
+
+def test_dispatch_uses_dynamic_wrapper_contract_when_configured(monkeypatch) -> None:
+    captured: dict = {}
+
+    class Response:
+        status = 204
+        def __enter__(self): return self
+        def __exit__(self, *_args): return False
+
+    def fake_urlopen(request, timeout):
+        captured["body"] = json.loads(request.data.decode())
+        assert timeout == 15
+        return Response()
+
+    monkeypatch.setattr("app.displacements.urlopen", fake_urlopen)
+    settings = get_settings({
+        "DISPLACEMENT_ACTIONS_ENABLED": "true", "GITHUB_ACTIONS_TOKEN": "server-token",
+        "GITHUB_ACTIONS_REPOSITORY": "moshiour0/SARGuardian_Dynamic",
+        "GITHUB_ACTIONS_WORKFLOW": "sarguardian-displacement.yml",
+        "GITHUB_ACTIONS_REF": "main", "DISPLACEMENT_CALLBACK_SECRET": "callback-secret",
+        "PUBLIC_API_URL": "https://api.example.test",
+    })
+    request = CreateDisplacementJobRequest(**payload())
+    dispatch_workflow(settings, UUID("11111111-1111-1111-1111-111111111111"), request)
     assert captured["body"]["inputs"] == {
-        "job_id": "11111111-1111-1111-1111-111111111111", "aoi_wkt": payload()["aoi_wkt"],
-        "start_date": "2026-10-01", "end_date": "2026-10-22", "callback_url": "https://api.example.test",
+        "job_id": "11111111-1111-1111-1111-111111111111",
+        "aoi_wkt": payload()["aoi_wkt"],
+        "start_date": "2026-10-01",
+        "end_date": "2026-10-22",
+        "callback_url": "https://api.example.test",
         "product_type": "BOTH",
         "acquisition_window": "secondary-acquisition-in-window",
         "retention_mode": "derived-only",
         "processing_profile": "full-aoi",
-        "place_name": "Rasuwa foothill", "place_latitude": "27.002", "place_longitude": "85.002",
-        "target_latitude": "27.002", "target_longitude": "85.002",
+        "place_name": "",
+        "place_latitude": "",
+        "place_longitude": "",
+        "target_latitude": "",
+        "target_longitude": "",
     }
 
+
+def test_dispatch_fails_closed_for_unknown_workflow_contract(monkeypatch) -> None:
+    def unexpected_urlopen(*_args, **_kwargs):
+        raise AssertionError("Unsupported workflow must be rejected before network dispatch.")
+
+    monkeypatch.setattr("app.displacements.urlopen", unexpected_urlopen)
+    settings = get_settings({
+        "DISPLACEMENT_ACTIONS_ENABLED": "true", "GITHUB_ACTIONS_TOKEN": "server-token",
+        "GITHUB_ACTIONS_REPOSITORY": "owner/repository", "GITHUB_ACTIONS_WORKFLOW": "unknown.yml",
+        "GITHUB_ACTIONS_REF": "main", "DISPLACEMENT_CALLBACK_SECRET": "callback-secret",
+        "PUBLIC_API_URL": "https://api.example.test",
+    })
+    with pytest.raises(GitHubDispatchError, match="does not match a supported account-processing contract"):
+        dispatch_workflow(settings, UUID("11111111-1111-1111-1111-111111111111"), CreateDisplacementJobRequest(**payload()))
 
 def test_dispatch_reports_the_safe_github_rejection_reason(monkeypatch) -> None:
     def fake_urlopen(*_args, **_kwargs):
@@ -403,7 +470,7 @@ def test_dispatch_reports_the_safe_github_rejection_reason(monkeypatch) -> None:
     monkeypatch.setattr("app.displacements.urlopen", fake_urlopen)
     settings = get_settings({
         "DISPLACEMENT_ACTIONS_ENABLED": "true", "GITHUB_ACTIONS_TOKEN": "server-token",
-        "GITHUB_ACTIONS_REPOSITORY": "owner/repository", "GITHUB_ACTIONS_WORKFLOW": "workflow.yml",
+        "GITHUB_ACTIONS_REPOSITORY": "owner/repository", "GITHUB_ACTIONS_WORKFLOW": "sarguardian-aoi-wkt-dashboard.yml",
         "GITHUB_ACTIONS_REF": "main", "DISPLACEMENT_CALLBACK_SECRET": "callback-secret",
         "PUBLIC_API_URL": "https://api.example.test",
     })
