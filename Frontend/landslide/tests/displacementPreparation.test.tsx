@@ -100,7 +100,21 @@ describe('displacement preparation route', () => {
     expect(html).toContain('>3<');
     expect(html).toContain('Retry task');
     expect(html).toContain('Go to map');
+    expect(html).toContain('Selected place:');
+    expect(html).toContain('Measurement target:');
+    expect(html).toContain('Not supplied inside the submitted AOI');
     expect(html).not.toContain('Start displacement processing');
+
+    const targetedJob = {
+      ...failedJob, place_name: 'Rasuwa foothill', place_latitude: 27.01, place_longitude: 85.01,
+      target_latitude: 27.01, target_longitude: 85.01,
+    } as const;
+    const targetedHtml = renderToStaticMarkup(<DisplacementJobStatus job={targetedJob as never} pendingAction={null}
+      clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
+      onRetry={() => {}} onBack={() => {}} />);
+    expect(targetedHtml).toContain('Rasuwa foothill');
+    expect(targetedHtml).toContain('27.01000, 85.01000');
+    expect(targetedHtml).toContain('not a stable-ground reference');
 
     const runningWithWorkerCounts = { ...failedJob, state: 'running', stage: 'products_discovered',
       github_run_url: 'https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123', result_summary: {
