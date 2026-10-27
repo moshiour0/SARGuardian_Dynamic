@@ -56,8 +56,7 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
     try {
       const html = await getInteractiveDashboardHtml(job.id, user);
       // Keep the popup at the Vercel-origin about:blank document instead of
-      // navigating to a blob: URL. Google Maps HTTP-referrer restrictions then
-      // see the same site origin as the AOI-selection map.
+      // navigating to a blob: URL, preserving same-origin and CSP behavior.
       writeDashboardHtml(popup, html);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not open the interactive dashboard.';
