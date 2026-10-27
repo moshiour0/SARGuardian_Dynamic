@@ -262,10 +262,9 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
         lambda drive_id: ({"bytes": len(payload), "id": drive_id}, payload),
     )
 
-    response = authenticated_client().get(
-        f"/api/displacement-jobs/{job_id}/dashboard",
-        headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyDUMMY123456789012345678901234567"},
-    )
+    # The result viewer keeps its native MapLibre/OpenStreetMap path. No Google Maps
+    # key is necessary to open the owner-verified scientific dashboard.
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
 
     assert response.status_code == 200
     assert response.headers["cache-control"] == "private, no-store"
@@ -273,20 +272,19 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
     assert "window.SARGUARDIAN_DASHBOARD={safe:true};" in response.text
     assert 'src="./dashboard-data.js"' not in response.text
     assert "Content-Security-Policy" in response.text
-    assert response.headers["referrer-policy"] == "origin"
-    assert '<meta name="referrer" content="origin">' in response.text
-    assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyDUMMY123456789012345678901234567" in response.text
-    assert "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;" in response.text
-    assert "https://tile.openstreetmap.org" not in response.text
-    assert "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs" not in response.text
+    assert "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs" in response.text
+    assert "let maplibregl = null;" in response.text
+    assert "maplibregl = await import(" in response.text
+    assert "https://tile.openstreetmap.org/{z}/{x}/{y}.png" in response.text
+    assert "maps.googleapis.com/maps/api/js?key=" not in response.text
     assert "SARGuardian responsive science dashboard" in response.text
-    assert "id=\"sg-dashboard-readiness\"" in response.text
+    assert 'id="sg-dashboard-readiness"' in response.text
     assert "Not measured is not the same as zero motion." in response.text
     assert "private-drive-file-id" not in response.text
     assert "Processing report ↗" not in response.text
 
 
-def test_interactive_dashboard_requires_google_maps_key_before_drive_download(monkeypatch) -> None:
+def test_interactive_dashboard_does_not_require_google_maps_key(monkeypatch) -> None:
     from uuid import uuid4
 
     job_id = uuid4()
@@ -302,6 +300,7 @@ def test_interactive_dashboard_requires_google_maps_key_before_drive_download(mo
         def get_displacement_job(self, owner_uid, requested_job_id):
             return {
                 "id": str(job_id),
+                "owner_uid": owner_uid,
                 "state": "succeeded",
                 "result_summary": {
                     "web_dashboard": {"status": "PASS"},
@@ -311,13 +310,13 @@ def test_interactive_dashboard_requires_google_maps_key_before_drive_download(mo
 
     called = []
     monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
-    monkeypatch.setattr(main_module, "download_private_result", lambda *_args: called.append(True))
-
+    monkeypatch.setattr(main_module, "download_private_result", lambda *_args: ({"bytes": len(payload)}, payload))
     response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
 
-    assert response.status_code == 503
-    assert "Google Maps is not configured" in response.json()["detail"]
+    assert response.status_code == 200
     assert called == []
+    assert "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs" in response.text
+    assert "maps.googleapis.com/maps/api/js?key=" not in response.text
 
 
 def test_interactive_dashboard_rejects_unavailable_old_bundle_without_drive_download(monkeypatch) -> None:
@@ -376,10 +375,7 @@ def test_interactive_dashboard_rejects_drive_checksum_mismatch(monkeypatch) -> N
         lambda _drive_id: ({"bytes": len(wrong_payload)}, wrong_payload),
     )
 
-    response = authenticated_client().get(
-        f"/api/displacement-jobs/{job_id}/dashboard",
-        headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyDUMMY123456789012345678901234567"},
-    )
+    response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
 
     assert response.status_code == 409
     assert "checksum" in response.json()["detail"]
