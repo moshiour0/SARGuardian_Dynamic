@@ -38,8 +38,12 @@ export function parsePolygonWkt(value: string): Coordinate[] {
     }
     return [longitude, latitude];
   });
-  if (points.length > 1 && points[0][0] === points[points.length - 1][0]
-    && points[0][1] === points[points.length - 1][1]) points.pop();
+  // WKT LinearRings must be explicitly closed; do not silently repair malformed input.
+  if (points.length < 4 || points[0][0] !== points[points.length - 1][0]
+    || points[0][1] !== points[points.length - 1][1]) {
+    throw new Error('AOI WKT polygon ring must be closed by repeating its first longitude/latitude vertex.');
+  }
+  points.pop();
   if (new Set(points.map(([longitude, latitude]) => `${longitude},${latitude}`)).size < 3) {
     throw new Error('AOI WKT needs at least three distinct vertices.');
   }
