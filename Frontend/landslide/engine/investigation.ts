@@ -22,12 +22,13 @@ export function polygonToWkt(value: unknown): string {
 
 // Parse only a single-ring WGS84 POLYGON; geometry with holes or multiple parts is rejected.
 export function parsePolygonWkt(value: string): Coordinate[] {
-  const match = /^\\s*POLYGON\\s*\\(\\s*\\(([^()]*)\\)\\s*\\)\\s*$/i.exec(value);
+  const match = /^\s*POLYGON\s*\(\s*\(([^()]*)\)\s*\)\s*$/i.exec(value);
   if (!match) throw new Error('Enter one WGS84 POLYGON ((longitude latitude, ...)); holes and MULTIPOLYGON are not supported.');
   const points = match[1].split(',').map((pair): Coordinate => {
-    const values = pair.trim().split(/\\s+/);
-    if (values.length !== 2 || values.some((item) => item.length === 0)) {
-      throw new Error('Each WKT vertex must contain exactly longitude and latitude.');
+    const values = pair.trim().split(/\s+/);
+    const numberPattern = /^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$/;
+    if (values.length !== 2 || values.some((item) => !numberPattern.test(item))) {
+      throw new Error('Each WKT vertex must contain exactly two valid numeric values: longitude and latitude.');
     }
     const longitude = Number(values[0]);
     const latitude = Number(values[1]);
