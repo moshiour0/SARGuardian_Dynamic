@@ -47,6 +47,24 @@ The manual, approval-gated staging procedure is documented in
 selecting the old paused project and does not authorize this local environment to contact
 Supabase.
 
+## Render: private Google Drive OAuth client secret file
+
+For the API service that serves `GET /api/displacement-jobs/{job_id}/dashboard`, Render can supply the Google OAuth client JSON as a mounted secret file instead of a multiline environment-variable value.
+
+1. In Render, open the **web service that runs this FastAPI API** (not just a separate worker or a different frontend service).
+2. Open **Environment** → **Secret Files** → **+ Add Secret File**.
+3. Set **Filename** to `google_drive_oauth_client.json`.
+4. Paste the complete downloaded OAuth client JSON into **Contents**, then save changes.
+5. Under **Environment Variables**, set:
+   - `GOOGLE_DRIVE_OAUTH_CLIENT_JSON_FILE=/etc/secrets/google_drive_oauth_client.json`
+   - `GOOGLE_DRIVE_REFRESH_TOKEN` = refresh token minted for this same OAuth client ID
+   - `GOOGLE_DRIVE_FOLDER_ID` = the Drive folder ID only (not the entire folder URL)
+6. Save and deploy/redeploy the API service. Render mounts service secret files under `/etc/secrets/`.
+
+The JSON must contain a top-level `"web"` object with `client_id`, `client_secret`, and `token_uri`. A Google OAuth Desktop app JSON uses `"installed"` instead and is rejected by this application; create/use a Web application OAuth client and mint the refresh token for that same client. The refresh token must have Drive permissions to read the result files and access the configured private folder.
+
+`GOOGLE_DRIVE_OAUTH_CLIENT_JSON_FILE` takes precedence over `GOOGLE_DRIVE_OAUTH_CLIENT_JSON` when both are set. The API service needs these settings because it downloads a private Drive archive when the user opens the dashboard. Setting them only in GitHub Actions, or only on another Render service, does not configure this API process. Confirm that the frontend's built `VITE_SARGUARDIAN_API_URL` points to the service where these credentials were set.
+
 ## Safe local configuration preflight
 
 Do not commit `Backend/.env`. Create it manually from `Backend/.env.example` only after
