@@ -3,24 +3,26 @@ import { describe, expect, it, vi } from 'vitest';
 import { DisplacementJobStatus, DisplacementPreparation, JOB_STATUS_POLL_MS } from '../ui/DisplacementPreparation';
 import { chooseAccountJob } from '../engine/displacementJobSelection';
 import { ScientificResults } from '../ui/ScientificResults';
-import { writeDashboardHtml } from '../ui/dashboardPopup';
 import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/processingStatus';
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
 import { DEFAULT_DISPLACEMENT_OPTIONS } from '../../src/api/catalog';
 
-describe('same-origin dashboard popup', () => {
-  it('writes verified HTML into the site-origin popup rather than navigating to a blob URL', () => {
-    const document = {
-      open: vi.fn(),
-      write: vi.fn(),
-      close: vi.fn(),
-    };
-    writeDashboardHtml({ document } as unknown as Window, '<!doctype html><html><body>verified</body></html>');
-
-    expect(document.open).toHaveBeenCalledOnce();
-    expect(document.write).toHaveBeenCalledWith('<!doctype html><html><body>verified</body></html>');
-    expect(document.close).toHaveBeenCalledOnce();
+describe('interactive dashboard rendering', () => {
+  it('offers an inline Processing dashboard action only for a verified successful result', () => {
+    const job = {
+      id: '736bd4e6-8963-43be-a916-bc62336c8557',
+      state: 'succeeded',
+      result_summary: {
+        web_dashboard: { status: 'PASS' },
+        artifacts: [{ path: 'aoi-derived-results.zip' }],
+      },
+    } as never;
+    const html = renderToStaticMarkup(<ScientificResults job={job} user={{ getIdToken: vi.fn() } as never} />);
+    expect(html).toContain('Load dashboard in Processing');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain('window.open');
+    expect(html).not.toContain('<iframe');
   });
 });
 
