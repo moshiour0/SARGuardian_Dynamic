@@ -103,10 +103,13 @@ export function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedI
   // The API returns newest-first. Once no task is running, reopen the newest
   // matching job (or newest account job) so an older successful result can
   // never masquerade as the current failed request.
+  // An active account job still takes precedence because duplicate parallel
+  // science runs are prohibited. Once no job is active, only return a result
+  // that matches the exact AOI/date/options/place/target contract; never fall
+  // back to a successful job for a different selected location.
   return matching.find((candidate) => activeStates.has(candidate.state))
     || jobs.find((candidate) => activeStates.has(candidate.state))
     || matching[0]
-    || jobs[0]
     || null;
 }
 
