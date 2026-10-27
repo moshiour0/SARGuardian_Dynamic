@@ -355,6 +355,37 @@ def test_private_artifact_download_requires_owner_and_rechecks_hash(monkeypatch)
     assert api.get(f"/api/displacement-jobs/{created['id']}/artifacts/0").status_code == 409
 
 
+def test_dashboard_drive_failure_logs_safe_reason_without_exposing_private_ids(monkeypatch, caplog) -> None:
+    store = DisplacementStore()
+    api = client(monkeypatch, store)
+    created = api.post("/api/displacement-jobs", json=payload()).json()
+    assert store.row is not None
+    store.row.update({
+        "state": "succeeded",
+        "result_summary": {
+            "web_dashboard": {"status": "PASS", "observations": 18, "layers": 45},
+            "artifacts": [{
+                "path": "aoi-derived-results.zip",
+                "bytes": 128,
+                "sha256": "a" * 64,
+                "drive_file_id": "PRIVATE_DRIVE_ID_123",
+            }],
+        },
+    })
+
+    def fail_private_download(_file_id):
+        raise main_module.DriveUploadError("Google Drive result storage is not fully configured.")
+
+    monkeypatch.setattr(main_module, "download_private_result", fail_private_download)
+    with caplog.at_level("WARNING", logger="app.main"):
+        response = api.get(f"/api/displacement-jobs/{created['id']}/dashboard")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Private dashboard storage is unavailable. Retry in a moment."
+    assert "Google Drive result storage is not fully configured." in caplog.text
+    assert "PRIVATE_DRIVE_ID_123" not in caplog.text
+
+
 def test_dispatch_uses_legacy_dashboard_contract_when_configured(monkeypatch) -> None:
     captured: dict = {}
 

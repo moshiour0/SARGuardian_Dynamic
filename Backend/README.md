@@ -61,7 +61,8 @@ obtaining staging values. The current code expects these names:
 - `CORS_ORIGINS` (comma-separated origins; required in production)
 - `PREFLIGHT_TTL_SECONDS` (60 through 604800 seconds)
 - `DISPLACEMENT_ACTIONS_ENABLED`, `GITHUB_ACTIONS_TOKEN`, `GITHUB_ACTIONS_REPOSITORY`, `GITHUB_ACTIONS_WORKFLOW`, `GITHUB_ACTIONS_REF`, `DISPLACEMENT_CALLBACK_SECRET`, and `PUBLIC_API_URL` for durable scientific-processing dispatch
-- Runner-only GitHub secrets: `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` or `EARTHDATA_TOKEN`, `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and `GOOGLE_DRIVE_FOLDER_ID`
+- Worker-side GitHub Actions secrets: `EARTHDATA_USERNAME`, `EARTHDATA_PASSWORD` or `EARTHDATA_TOKEN`, `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and `GOOGLE_DRIVE_FOLDER_ID`
+- API runtime secrets (required on the Render `SARGuardian_Dynamic` service, and on any Vercel FastAPI deployment serving the dashboard): `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`, `GOOGLE_DRIVE_REFRESH_TOKEN`, and `GOOGLE_DRIVE_FOLDER_ID`
 - `PORT` (optional; defaults to 8000)
 
 Manual setup:
@@ -82,6 +83,18 @@ Supabase or Firebase, contact ASF or Supabase, apply migrations, print values or
 or read the Firebase credential file. It exits with code 0 only when all checks pass. The
 Supabase secret is an API key for the server-side `apikey` header; it is not a Firebase token
 and is never the end-user `Authorization: Bearer` credential.
+
+## Private dashboard API storage requirements
+
+The GitHub Actions worker uploads the completed `aoi-derived-results.zip` bundle to private Google Drive and sends a checksum-verified Drive receipt to the API. The API then downloads that same private file only after confirming the signed-in user owns the succeeded job. **The API runtime must have its own Drive OAuth configuration as well as the worker.** GitHub Actions secrets do not automatically become Render service environment variables.
+
+On the Render service `SARGuardian_Dynamic` (or the FastAPI hosting environment), add these three server-only environment variables using the same values as the workflow's GitHub Actions secrets:
+
+- `GOOGLE_DRIVE_OAUTH_CLIENT_JSON`: the OAuth client JSON object, including its `web` credentials.
+- `GOOGLE_DRIVE_REFRESH_TOKEN`: the OAuth refresh token for the Drive identity that can access the private result folder.
+- `GOOGLE_DRIVE_FOLDER_ID`: the parent folder ID used by the worker.
+
+Keep the values private: do not commit them, put them in any `VITE_*` variable, or paste them into issues or logs. After saving the variables, redeploy/restart the API service and retry opening the existing job's dashboard; the existing ZIP is already retained, so a new NISAR processing run is not needed just to retry the dashboard. If the 503 remains, check the API's safe server log message for the sanitized Google Drive failure reason (missing configuration, OAuth authentication, or file retrieval failure).
 
 ## Vercel deployment preparation
 
