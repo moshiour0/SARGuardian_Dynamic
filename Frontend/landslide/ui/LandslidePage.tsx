@@ -66,6 +66,13 @@ function MapCanvas({ location, searchText, coordinates, areaClosed, drawing, sel
   onSelectedVertexRef.current = onSelectedVertex;
   onSearchTextRef.current = onSearchText;
 
+  // Keep the manual target fields aligned with place search, including when the map API fails.
+  useEffect(() => {
+    setManualTargetName(location?.name ?? '');
+    setManualTargetLatitude(location ? String(location.latitude) : '');
+    setManualTargetLongitude(location ? String(location.longitude) : '');
+  }, [location]);
+
   useEffect(() => {
     let active = true;
     let mapClickListener: google.maps.MapsEventListener | undefined;
