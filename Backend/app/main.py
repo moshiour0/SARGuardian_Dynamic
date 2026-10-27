@@ -643,6 +643,191 @@ MAX_DASHBOARD_DATA_BYTES = 40 * 1024 * 1024
 DASHBOARD_VIEWER_PATH = "web-dashboard/index.html"
 DASHBOARD_DATA_PATH = "web-dashboard/dashboard-data.js"
 
+# Presentation is added at read-time so older, checksum-verified result bundles
+# can receive responsive layout and truthful measurement-state messaging without
+# repeating expensive NISAR processing or rewriting retained scientific assets.
+DASHBOARD_PRESENTATION_CSS = r"""
+:root{color-scheme:dark;--bg:#06111b;--panel:#0c1c29;--panel-raised:#102838;--edge:#274455;--ink:#edf7ff;--muted:#a9bdcb;--aqua:#70e6dc;--amber:#ffcf78;--danger:#ff8a80}
+html{scroll-behavior:smooth;background:var(--bg)}
+body{margin:0;background:radial-gradient(1100px 520px at 18% -8%,#163e4d 0%,transparent 65%),linear-gradient(155deg,#06111b,#081825 60%,#07121d);color:var(--ink);font:15px/1.58 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:.005em}
+main{width:min(100%,1760px);max-width:1760px;margin:0 auto;padding:clamp(14px,2.3vw,36px)}
+header{align-items:center;gap:20px;padding:10px 0 24px;border-color:rgba(134,190,207,.19)}
+header>div:first-child{min-width:0;max-width:78ch}
+h1{font-size:clamp(28px,3.3vw,46px);line-height:1.08;letter-spacing:-.045em;font-weight:800;margin:9px 0 10px}
+h2{font-size:clamp(19px,2vw,25px);line-height:1.2;letter-spacing:-.025em}
+p{max-width:82ch}
+.kicker{font-size:10px;line-height:1.4;letter-spacing:.17em}
+.muted{color:var(--muted);line-height:1.65}
+button,select,input{font:inherit}
+button,select{border:1px solid #35596b;border-radius:10px;background:linear-gradient(180deg,#153446,#102838);padding:9px 12px;min-height:40px}
+button{transition:transform .16s ease,border-color .16s ease,background .16s ease}
+button:hover{border-color:#70e6dc;background:#174052}
+button:active{transform:translateY(1px)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--aqua);outline-offset:3px}
+header .controls{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+header .controls button{font-weight:700}
+header .controls a,header .controls span{font-size:12px}
+.warn{margin:20px 0;padding:14px 16px;border:1px solid rgba(255,207,120,.5);border-left:4px solid var(--amber);background:linear-gradient(100deg,rgba(105,72,26,.35),rgba(105,72,26,.12));border-radius:12px;color:#ffebc5;line-height:1.65}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,158px),1fr));gap:12px;margin:18px 0}
+.card,.panel{min-width:0;border:1px solid rgba(116,175,196,.2);border-radius:18px;background:linear-gradient(145deg,rgba(17,42,57,.96),rgba(9,24,36,.96));padding:clamp(14px,1.35vw,22px);box-shadow:0 16px 40px rgba(0,0,0,.14);backdrop-filter:blur(10px)}
+.card{position:relative;overflow:hidden}
+.card:before{content:"";position:absolute;inset:0 0 auto;height:2px;background:linear-gradient(90deg,rgba(112,230,220,.7),transparent 80%)}
+.label{color:#a9bfcd;font-size:11px;font-weight:750;line-height:1.35;letter-spacing:.09em;text-transform:uppercase}
+.big{font-size:clamp(22px,2.2vw,32px);line-height:1.12;font-weight:800;letter-spacing:-.04em;margin-top:9px;overflow-wrap:anywhere}
+.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(320px,.85fr);align-items:start;gap:18px}
+.layout>.panel{min-width:0}
+.maphead{align-items:flex-start;flex-wrap:wrap;gap:14px;margin-bottom:14px}
+.maphead>div:first-child{min-width:0}
+.maphead strong{font-size:clamp(14px,1.3vw,18px);letter-spacing:-.015em}
+.controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0}
+.controls label{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.controls select{max-width:100%;min-width:0}
+.mapbox{position:relative;isolation:isolate;overflow:hidden;width:100%;height:clamp(380px,58svh,690px);min-height:340px;border:1px solid rgba(112,230,220,.2);border-radius:15px;background:radial-gradient(ellipse at 50% 42%,#0d2a39 0%,#071722 68%,#06111a 100%)}
+#map,.compare-mapbox>div{width:100%;height:100%;min-height:0;background:transparent}
+.maplibregl-canvas,.maplibregl-canvas-container{outline:none}
+.maplibregl-ctrl-group{border:1px solid rgba(150,205,217,.25)!important;border-radius:10px!important;overflow:hidden;background:rgba(7,25,36,.92)!important}
+.maplibregl-ctrl-group button{background-color:transparent!important}
+.maplibregl-ctrl-attrib{background:rgba(4,15,24,.82)!important;color:#d6e8ef!important}
+.maplibregl-ctrl-attrib a{color:#8eece4!important}
+.map-basemap-status{position:absolute;z-index:5;left:12px;right:12px;bottom:12px;margin:auto;max-width:620px;padding:12px 14px;border:1px solid rgba(255,207,120,.5);border-radius:12px;background:rgba(10,28,39,.96);color:#ffe9bc;box-shadow:0 8px 30px rgba(0,0,0,.25);font-size:13px;line-height:1.5}
+.timeline{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;margin-top:14px}
+.timeline .controls{display:flex;gap:7px}
+input[type=range]{width:100%;min-width:0;accent-color:var(--aqua)}
+.timeline small{color:var(--muted);font-size:12px;white-space:nowrap}
+.metriclist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0 18px}
+.metricitem{min-width:0;padding:12px;border:1px solid rgba(116,175,196,.18);border-radius:12px;background:rgba(4,17,28,.68)}
+.metricitem .label{font-size:10px;letter-spacing:.07em}
+.metricitem strong{display:block;margin-top:5px;font-size:clamp(13px,1.05vw,16px);line-height:1.4;font-weight:750;overflow-wrap:anywhere}
+.metricitem small{display:block;margin-top:6px;color:var(--muted);font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.chart{display:block;width:100%;height:auto;min-height:170px;margin:10px 0 14px;overflow:visible}
+#supportChart{min-height:145px}
+details{margin-top:14px;border:1px solid rgba(116,175,196,.19);border-radius:14px;background:rgba(4,17,28,.44);padding:14px}
+details>summary{cursor:pointer;font-weight:750;line-height:1.5}
+details>summary::marker{color:var(--aqua)}
+details[open]>summary{margin-bottom:12px;color:var(--aqua)}
+.compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.compare-mapbox{height:300px;min-height:260px;overflow:hidden;border:1px solid var(--edge);border-radius:12px;background:#071722}
+.compare-map-title{font-size:14px}
+.compare-controls{display:flex;gap:10px;flex-wrap:wrap}
+.compare-controls label{display:grid;gap:6px;min-width:min(100%,170px);flex:1}
+.scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.scenario-grid label{display:grid;align-content:start;gap:7px;min-width:0;color:var(--muted);font-size:12px}
+.scenario-grid input{width:100%;min-width:0}
+.legend{margin:12px 0;color:var(--muted);font-size:12px;line-height:1.6;overflow-wrap:anywhere}
+.legendbar{height:10px;margin-top:9px;border-radius:99px;border:1px solid rgba(255,255,255,.15)}
+.foot{margin:26px 0 0;padding:18px 0 8px;border-top:1px solid rgba(116,175,196,.18);color:#91aab9;font-size:12px;line-height:1.65}
+.run-readiness{margin:0 0 18px;padding:clamp(15px,1.7vw,23px);border:1px solid rgba(112,230,220,.2);border-radius:18px;background:linear-gradient(115deg,rgba(13,42,56,.95),rgba(8,24,36,.96));box-shadow:0 14px 34px rgba(0,0,0,.12)}
+.readiness-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:13px}
+.readiness-head h2{margin:6px 0 0}
+.readiness-intro{margin:8px 0 0;max-width:86ch;color:var(--muted);font-size:13px;line-height:1.6}
+.readiness-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.readiness-card{min-width:0;padding:14px;border:1px solid rgba(116,175,196,.19);border-radius:13px;background:rgba(3,16,26,.56)}
+.readiness-card .readiness-value{display:block;margin:8px 0 4px;color:var(--ink);font-size:clamp(18px,1.8vw,25px);font-weight:800;line-height:1.2;letter-spacing:-.025em;overflow-wrap:anywhere}
+.readiness-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.readiness-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:99px;background:rgba(255,207,120,.12);color:#ffdfa0;font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.readiness-badge.good{background:rgba(112,230,220,.12);color:#8af2e4}
+@media(max-width:1050px){main{padding:18px}.layout{grid-template-columns:minmax(0,1fr)}.layout>aside{grid-row:auto}.mapbox{height:clamp(340px,55svh,580px)}.readiness-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.compare-mapbox{height:280px}}
+@media(max-width:680px){main{padding:12px 10px 24px}header{align-items:flex-start;gap:13px;padding-bottom:18px}header>div:first-child{width:100%;max-width:none}header .controls{width:100%;justify-content:flex-start;gap:8px}h1{font-size:clamp(26px,7vw,34px)}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}.card,.panel{padding:13px;border-radius:14px}.label{font-size:10px}.big{font-size:clamp(20px,6vw,27px);margin-top:7px}.layout{grid-template-columns:minmax(0,1fr);gap:12px}.maphead{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}.maphead .controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}.maphead .controls label{display:grid;align-content:start;gap:5px;min-width:0}.maphead .controls label:first-child{grid-column:1/-1}.maphead .controls select{width:100%;max-width:none}.mapbox{height:54svh;min-height:320px;max-height:480px}.timeline{grid-template-columns:minmax(0,1fr);gap:9px}.timeline small{white-space:normal}.metriclist{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.metricitem{padding:10px}.metricitem strong{font-size:13px}.chart{min-height:155px}.compare-grid,.scenario-grid{grid-template-columns:minmax(0,1fr)}.compare-mapbox{height:260px;min-height:240px}.compare-controls{display:grid;grid-template-columns:minmax(0,1fr)}.compare-controls label{min-width:0}.readiness-grid{grid-template-columns:minmax(0,1fr)}.readiness-card{padding:12px}.run-readiness{border-radius:14px;padding:13px}.warn{padding:12px;font-size:13px}.foot{font-size:11px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+"""
+DASHBOARD_READINESS_MARKUP = """
+<section class="run-readiness" id="sgRunReadiness" aria-label="Measurement readiness" aria-live="polite">
+  <div class="readiness-head">
+    <div><div class="kicker">RUN INTERPRETATION</div><h2>Measurement readiness</h2>
+      <p class="readiness-intro">A clearer distinction between what this run measured, what remains unavailable, and what must not be inferred from missing values.</p>
+    </div>
+  </div>
+  <div class="readiness-grid" id="sgRunReadinessGrid"></div>
+</section>
+"""
+DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
+(function(){
+  function mountReadiness(){
+    var manifest=window.SARGUARDIAN_DASHBOARD;
+    var root=document.getElementById("sgRunReadinessGrid");
+    if(!manifest||!root)return;
+    var obs=Array.isArray(manifest.observations)?manifest.observations:[];
+    var measurements=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_measurement_status==="MEASURED"&&(m.target_local_los_median_mm!=null||m.target_local_range_median_mm!=null||m.target_local_azimuth_median_mm!=null);}).length;
+    var floors=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_local_floor_status==="MEASURED"&&m.target_local_floor_mm_day!=null;}).length;
+    var context=manifest.site_context||{},place=context.place||{},target=context.measurement_target||{};
+    var placeName=typeof place.name==="string"&&place.name.trim()?place.name.trim():"No named place selected";
+    var targetStatus=String(target.status||"NOT_REPORTED");
+    var targetDescription=placeName==="No named place selected"?
+      "No display name is attached to this run. A product CRID is provenance metadata, not evidence that target-local motion was measured.":
+      "Named place context is attached. Check each selected pair before interpreting target-specific values.";
+    if(targetStatus==="IN_AOI_TARGET_CAPTURED")targetDescription+=" A target coordinate is recorded inside the AOI.";
+    else if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
+    var rows=[
+      {label:"Target-local displacement",value:measurements+" / "+obs.length+" pairs measured",note:measurements===0?"Not measured is not the same as zero motion. No target-local LOS/range/along-track displacement is reported for these pairs.":"Only pairs marked MEASURED are counted; do not fill missing pairs with zero.",good:measurements>0},
+      {label:"Local detection floor",value:floors+" / "+obs.length+" pairs measured",note:floors===0?"No measured target-local detection floor is available. A missing floor is not a 0 mm/day threshold.":"Noise/detectability bounds are not observed displacement or velocity.",good:floors>0},
+      {label:"Place / target context",value:placeName,note:targetDescription,good:placeName!=="No named place selected"||targetStatus==="IN_AOI_TARGET_CAPTURED"}
+    ];
+    root.replaceChildren();
+    rows.forEach(function(row){
+      var card=document.createElement("div");card.className="readiness-card";
+      var label=document.createElement("div");label.className="label";label.textContent=row.label;
+      var badge=document.createElement("span");badge.className="readiness-badge"+(row.good?" good":"");badge.textContent=row.good?"REPORTED":"NOT REPORTED";
+      var value=document.createElement("strong");value.className="readiness-value";value.textContent=row.value;
+      var note=document.createElement("p");note.textContent=row.note;
+      card.append(label,badge,value,note);root.append(card);
+    });
+  }
+  if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",mountReadiness,{once:true});else mountReadiness();
+})();
+</script>
+"""
+
+def _apply_dashboard_presentation(html: str) -> str:
+    """Enhance an already verified dashboard document without changing its data."""
+    if "</head>" not in html or "</body>" not in html:
+        raise ValueError("Interactive dashboard HTML is missing its document boundaries.")
+    if 'name="referrer"' not in html:
+        html = html.replace("</head>", '<meta name="referrer" content="strict-origin-when-cross-origin"></head>', 1)
+
+    if "/* SARGuardian responsive science dashboard */" not in html:
+        if "</style>" in html:
+            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style>", 1)
+        else:
+            html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style></head>", 1)
+
+    cards_anchor = '<div class="cards" id="summaryCards"></div>'
+    if cards_anchor in html and 'id="sgRunReadiness"' not in html:
+        html = html.replace(cards_anchor, cards_anchor + DASHBOARD_READINESS_MARKUP, 1)
+
+    map_anchor = '<div id="map"></div>'
+    status_markup = '<div id="mapBasemapStatus" class="map-basemap-status hidden" role="status">Basemap tiles are blocked or unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas.</div>'
+    if map_anchor in html and 'id="mapBasemapStatus"' not in html:
+        html = html.replace(map_anchor, map_anchor + status_markup, 1)
+
+    primary_hook = "M.addControl(new maplibregl.NavigationControl(),'top-right');M.on('load',function(){"
+    primary_replacement = (
+        "M.addControl(new maplibregl.NavigationControl(),'top-right');"
+        "let osmAccessErrors=0;M.on('error',function(event){"
+        "if(event&&event.sourceId==='osm'&&event.error&&[401,403,429].includes(event.error.status)){"
+        "osmAccessErrors++;if(osmAccessErrors>=2&&M.getLayer('osm')){M.removeLayer('osm');"
+        "if(M.getSource('osm'))M.removeSource('osm');"
+        "const status=document.getElementById('mapBasemapStatus');if(status)status.classList.remove('hidden');}}});"
+        "M.on('load',function(){"
+    )
+    if primary_hook in html and "let osmAccessErrors=0" not in html:
+        html = html.replace(primary_hook, primary_replacement, 1)
+
+    compare_hook = "map.addControl(new maplibregl.NavigationControl(),'top-right');\n map.on('load',function(){"
+    compare_replacement = (
+        "map.addControl(new maplibregl.NavigationControl(),'top-right');"
+        "let compareOsmAccessErrors=0;map.on('error',function(event){"
+        "if(event&&event.sourceId==='osm'&&event.error&&[401,403,429].includes(event.error.status)){"
+        "compareOsmAccessErrors++;if(compareOsmAccessErrors>=2&&map.getLayer('osm')){map.removeLayer('osm');"
+        "if(map.getSource('osm'))map.removeSource('osm');}}});"
+        "\n map.on('load',function(){"
+    )
+    if compare_hook in html and "let compareOsmAccessErrors=0" not in html:
+        html = html.replace(compare_hook, compare_replacement, 1)
+
+    if 'id="sg-dashboard-readiness"' not in html:
+        html = html.replace("</body>", DASHBOARD_READINESS_SCRIPT + "</body>", 1)
+    return html
+
 
 @app.get("/api/displacement-jobs/{job_id}/dashboard")
 async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_current_user)) -> Response:
@@ -723,10 +908,13 @@ async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_curr
     if "<head>" not in html:
         raise HTTPException(status_code=409, detail="Dashboard viewer has no HTML head section.")
     html = html.replace("<head>", "<head>" + meta, 1)
+    html = _apply_dashboard_presentation(html)
     return Response(content=html, media_type="text/html", headers={
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
-        "Referrer-Policy": "no-referrer",
+        # The HTML meta policy exposes only the app's origin to cross-origin
+        # basemap hosts, never the private job URL or embedded bundle contents.
+        "Referrer-Policy": "strict-origin-when-cross-origin",
     })
 
 
