@@ -26,7 +26,7 @@ export function parsePolygonWkt(value: string): Coordinate[] {
   if (!match) throw new Error('Enter one WGS84 POLYGON ((longitude latitude, ...)); holes and MULTIPOLYGON are not supported.');
   const points = match[1].split(',').map((pair): Coordinate => {
     const values = pair.trim().split(/\s+/);
-    const numberPattern = /^[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$/;
+    const numberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
     if (values.length !== 2 || values.some((item) => !numberPattern.test(item))) {
       throw new Error('Each WKT vertex must contain exactly two valid numeric values: longitude and latitude.');
     }
