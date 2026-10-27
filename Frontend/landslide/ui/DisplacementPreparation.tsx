@@ -11,6 +11,7 @@ import {
   type DisplacementJob,
 } from '../../src/api/catalog';
 import { ScientificResults } from './ScientificResults';
+import { chooseAccountJob } from '../engine/displacementJobSelection';
 import { ELAPSED_TICK_MS, formatElapsed, type GranuleCounts } from './processingStatus';
 
 const activeStates = new Set(['queued', 'dispatching', 'running']);
@@ -73,44 +74,6 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
     </div>}
     <ScientificResults job={job} user={user} />
   </section>;
-}
-
-function normalizePlaceName(value: string | null | undefined): string | null {
-  const normalized = value?.trim().replace(/\\s+/g, ' ');
-  return normalized || null;
-}
-
-function sameOptionalCoordinate(a: number | null | undefined, b: number | null | undefined): boolean {
-  if (a == null || b == null) return a == null && b == null;
-  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 1e-8;
-}
-
-export function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestigation, options: DisplacementProcessingOptions) {
-  const matching = preparation.valid
-    ? jobs.filter((candidate) => candidate.aoi_wkt === preparation.payload.aoi_wkt
-      && candidate.start_date === preparation.payload.start_date
-      && candidate.end_date === preparation.payload.end_date
-      && normalizePlaceName(candidate.place_name) === normalizePlaceName(preparation.payload.place_name)
-      && sameOptionalCoordinate(candidate.place_latitude, preparation.payload.place_latitude)
-      && sameOptionalCoordinate(candidate.place_longitude, preparation.payload.place_longitude)
-      && sameOptionalCoordinate(candidate.target_latitude, preparation.payload.target_latitude)
-      && sameOptionalCoordinate(candidate.target_longitude, preparation.payload.target_longitude)
-      && (candidate.product_type || 'BOTH') === options.product_type
-      && (candidate.acquisition_window || 'secondary-acquisition-in-window') === options.acquisition_window
-      && (candidate.retention_mode || 'derived-only') === options.retention_mode
-      && (candidate.processing_profile || 'full-aoi') === options.processing_profile)
-    : [];
-  // The API returns newest-first. Once no task is running, reopen the newest
-  // matching job (or newest account job) so an older successful result can
-  // never masquerade as the current failed request.
-  // An active account job still takes precedence because duplicate parallel
-  // science runs are prohibited. Once no job is active, only return a result
-  // that matches the exact AOI/date/options/place/target contract; never fall
-  // back to a successful job for a different selected location.
-  return matching.find((candidate) => activeStates.has(candidate.state))
-    || jobs.find((candidate) => activeStates.has(candidate.state))
-    || matching[0]
-    || null;
 }
 
 export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, granuleCounts = null, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; granuleCounts?: GranuleCounts | null; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {
