@@ -824,7 +824,7 @@ def _apply_dashboard_presentation(html: str) -> str:
     if compare_hook in html and "let compareOsmAccessErrors=0" not in html:
         html = html.replace(compare_hook, compare_replacement, 1)
 
-    if "id=\\"sg-dashboard-readiness\\"" not in html:
+    if 'id="sg-dashboard-readiness"' not in html:
         html = html.replace("</body>", DASHBOARD_READINESS_SCRIPT + "</body>", 1)
     return html
 
