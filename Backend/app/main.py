@@ -881,57 +881,6 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
       if (lngs.some(function(v) { return !Number.isFinite(v); }) || lats.some(function(v) { return !Number.isFinite(v); })) return null;
       return { west: Math.min.apply(null, lngs), east: Math.max.apply(null, lngs), south: Math.min.apply(null, lats), north: Math.max.apply(null, lats) };
     }
-    class RasterPreviewOverlay extends google.maps.OverlayView {
-      constructor(url, bounds, opacity) {
-        super();
-        this.url = url;
-        this.bounds = bounds;
-        this.opacity = opacity;
-        this.root = null;
-        this.image = null;
-      }
-      onAdd() {
-        this.root = document.createElement("div");
-        Object.assign(this.root.style, {
-          position: "absolute", overflow: "hidden", pointerEvents: "none",
-          margin: "0", padding: "0", border: "0"
-        });
-        this.image = document.createElement("img");
-        this.image.src = this.url;
-        this.image.alt = "Georeferenced NISAR raster preview";
-        this.image.draggable = false;
-        Object.assign(this.image.style, {
-          position: "absolute", inset: "0", width: "100%", height: "100%",
-          maxWidth: "none", maxHeight: "none", margin: "0", padding: "0",
-          border: "0", display: "block", pointerEvents: "none",
-          opacity: String(this.opacity), userSelect: "none"
-        });
-        this.root.appendChild(this.image);
-        this.getPanes().overlayLayer.appendChild(this.root);
-      }
-      draw() {
-        if (!this.root || !this.getProjection()) return;
-        var projection = this.getProjection();
-        var northWest = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.bounds.north, this.bounds.west));
-        var southEast = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.bounds.south, this.bounds.east));
-        if (!northWest || !southEast) return;
-        Object.assign(this.root.style, {
-          left: northWest.x + "px", top: northWest.y + "px",
-          width: Math.max(0, southEast.x - northWest.x) + "px",
-          height: Math.max(0, southEast.y - northWest.y) + "px"
-        });
-      }
-      onRemove() {
-        if (this.root && this.root.parentNode) this.root.parentNode.removeChild(this.root);
-        this.root = null;
-        this.image = null;
-      }
-      setOpacity(value) {
-        this.opacity = Math.max(0, Math.min(1, Number(value)));
-        if (this.image) this.image.style.opacity = String(this.opacity);
-      }
-    }
-
     class GoogleMapCompatibilityAdapter {
       constructor(options) {
         this.container = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
@@ -998,11 +947,10 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
         if (spec.type === "raster") {
           var imageBounds = boundsForCorners(source.coordinates);
           if (imageBounds && source.url) {
-            overlay = new RasterPreviewOverlay(
-              source.url,
-              imageBounds,
-              Number.isFinite(Number(paint["raster-opacity"])) ? Number(paint["raster-opacity"]) : 0.82
-            );
+            overlay = new google.maps.GroundOverlay(source.url, imageBounds, {
+              opacity: Number.isFinite(Number(paint["raster-opacity"])) ? Number(paint["raster-opacity"]) : 0.82,
+              clickable: false
+            });
           }
         } else {
           var geometry = geometryFor(source.data);
