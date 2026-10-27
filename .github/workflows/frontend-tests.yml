@@ -1,4 +1,5 @@
 name: Frontend build, lint and tests
+# Includes inline Google Maps dashboard rendering in the Processing workspace.
 
 on:
   pull_request:
