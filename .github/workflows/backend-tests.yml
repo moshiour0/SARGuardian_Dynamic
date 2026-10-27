@@ -1,4 +1,5 @@
 name: Backend tests
+# Includes verified Google Maps adapter/key-contract tests for dashboard HTML.
 
 on:
   pull_request:
