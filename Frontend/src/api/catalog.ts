@@ -154,12 +154,18 @@ export async function getInteractiveDashboardHtml(
 ): Promise<string> {
   const safeId = jobId.trim();
   if (!/^[0-9a-f-]{36}$/i.test(safeId)) throw new Error('Invalid displacement job ID.');
+  const mapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  if (!mapsApiKey?.trim()) throw new Error('Google Maps is not configured. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.');
   const token = await getFirebaseIdToken(user);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}/api/displacement-jobs/${encodeURIComponent(safeId)}/dashboard`, {
       method: 'GET',
-      headers: { Authorization: `Bearer ${token}`, Accept: 'text/html' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'text/html',
+        'X-SARGuardian-Google-Maps-Key': mapsApiKey,
+      },
       cache: 'no-store',
     });
   } catch {
