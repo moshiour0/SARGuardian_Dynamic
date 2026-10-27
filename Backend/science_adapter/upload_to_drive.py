@@ -54,7 +54,16 @@ def _sha256_file(path: Path) -> str:
 
 def load_drive_config(environ: dict[str, str] | None = None) -> DriveConfig:
     values = environ if environ is not None else os.environ
-    raw_client = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON", "").strip()
+    client_file = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON_FILE", "").strip()
+    if client_file:
+        try:
+            raw_client = Path(client_file).read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise DriveUploadError("Google Drive OAuth client secret file is unavailable or unreadable.") from exc
+    else:
+        # Keep inline JSON support for GitHub Actions and existing deployments.
+        raw_client = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON", "").strip()
+
     refresh_token = values.get("GOOGLE_DRIVE_REFRESH_TOKEN", "").strip()
     parent_folder_id = values.get("GOOGLE_DRIVE_FOLDER_ID", "").strip()
     if not raw_client or not refresh_token or not parent_folder_id:
@@ -76,7 +85,6 @@ def load_drive_config(environ: dict[str, str] | None = None) -> DriveConfig:
     if token_uri not in GOOGLE_TOKEN_URIS:
         raise DriveUploadError("Google Drive OAuth client uses an unsupported token endpoint.")
     return DriveConfig(client_id, client_secret, token_uri, refresh_token, parent_folder_id)
-
 
 class DriveClient:
     def __init__(self, config: DriveConfig, session: requests.Session | Any | None = None) -> None:
