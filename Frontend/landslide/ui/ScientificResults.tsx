@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { DisplacementJob } from '../../src/api/catalog';
 import { getInteractiveDashboardHtml } from '../../src/api/catalog';
+import { writeDashboardHtml } from './dashboardPopup';
 
 function driveFolderUrl(job: DisplacementJob): string | undefined {
   if (job.state !== 'succeeded' || !job.result_summary) return undefined;
@@ -25,17 +26,6 @@ function dashboardAvailable(job: DisplacementJob): boolean {
     !!item && typeof item === 'object' && !Array.isArray(item)
       && (item as Record<string, unknown>).path === 'aoi-derived-results.zip',
   );
-}
-
-/**
- * Write the verified dashboard into the same-origin about:blank popup.
- * A blob: navigation can change the Referer seen by Google Maps and fail
- * HTTP-referrer-restricted browser keys even though the same key works in AOI selection.
- */
-export function writeDashboardHtml(popup: Pick<Window, 'document'>, html: string): void {
-  popup.document.open();
-  popup.document.write(html);
-  popup.document.close();
 }
 
 export function ScientificResults({ job, user }: { job: DisplacementJob; user: Pick<User, 'getIdToken'> }) {
