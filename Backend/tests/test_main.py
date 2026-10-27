@@ -267,6 +267,11 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
     assert "window.SARGUARDIAN_DASHBOARD={safe:true};" in response.text
     assert 'src="./dashboard-data.js"' not in response.text
     assert "Content-Security-Policy" in response.text
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert '<meta name="referrer" content="strict-origin-when-cross-origin">' in response.text
+    assert "SARGuardian responsive science dashboard" in response.text
+    assert "id=\"sg-dashboard-readiness\"" in response.text
+    assert "Not measured is not the same as zero motion." in response.text
     assert "private-drive-file-id" not in response.text
     assert "Processing report ↗" not in response.text
 
