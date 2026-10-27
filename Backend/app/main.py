@@ -678,7 +678,12 @@ async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_curr
 
     try:
         received, data = download_private_result(artifact["drive_file_id"])
-    except DriveUploadError:
+    except DriveUploadError as exc:
+        # The Drive helper intentionally sanitizes provider failures. Log that
+        # safe reason on the server so an operator can distinguish missing
+        # runtime credentials from OAuth, permissions, and file retrieval errors.
+        # Never log the Drive file ID, access token, refresh token, or client secret.
+        logger.warning("Private dashboard Drive retrieval failed for job %s: %s", job_id, exc)
         raise HTTPException(status_code=503, detail="Private dashboard storage is unavailable. Retry in a moment.") from None
     if received.get("bytes") != artifact["bytes"] or len(data) != artifact["bytes"] or hashlib.sha256(data).hexdigest() != artifact["sha256"]:
         raise HTTPException(status_code=409, detail="Stored dashboard bundle no longer matches its verified checksum inventory.")
