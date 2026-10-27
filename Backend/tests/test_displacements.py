@@ -378,7 +378,10 @@ def test_dashboard_drive_failure_logs_safe_reason_without_exposing_private_ids(m
 
     monkeypatch.setattr(main_module, "download_private_result", fail_private_download)
     with caplog.at_level("WARNING", logger="app.main"):
-        response = api.get(f"/api/displacement-jobs/{created['id']}/dashboard")
+        response = api.get(
+            f"/api/displacement-jobs/{created['id']}/dashboard",
+            headers={"X-SARGuardian-Google-Maps-Key": "AIzaSyDUMMY123456789012345678901234567"},
+        )
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Private dashboard storage is unavailable. Retry in a moment."

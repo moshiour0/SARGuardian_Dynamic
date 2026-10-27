@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import logging
 import hashlib
+import re
 from io import BytesIO
 from pathlib import PurePosixPath
 from zipfile import BadZipFile, ZipFile
@@ -10,7 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse, Response
@@ -79,7 +80,7 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type"],
+    allow_headers=["Authorization", "Content-Type", "X-SARGuardian-Google-Maps-Key"],
 )
 
 
@@ -829,8 +830,280 @@ def _apply_dashboard_presentation(html: str) -> str:
     return html
 
 
+DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT = r"""<script>
+window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
+  var complete = false;
+  function unavailable(message) {
+    if (complete) return;
+    complete = true;
+    window.SARGUARDIAN_GOOGLE_MAPS_ERROR = message;
+    resolve({ Map: null, NavigationControl: function() {} });
+  }
+  window.gm_authFailure = function() {
+    window.SARGUARDIAN_GOOGLE_MAPS_ERROR = "Google Maps rejected the browser API key. Check Maps JavaScript API enablement and HTTP-referrer restrictions.";
+  };
+  var script = document.createElement("script");
+  script.src = "https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&v=weekly&loading=async";
+  script.async = true;
+  script.defer = true;
+  script.referrerPolicy = "origin";
+  script.onload = function() {
+    if (!window.google || !google.maps || typeof google.maps.Map !== "function") {
+      unavailable("Google Maps JavaScript API did not initialize. Check the key and enabled API.");
+      return;
+    }
+    if (complete) return;
+    complete = true;
+
+    function geometryFor(data) {
+      if (!data) return null;
+      if (data.type === "Feature") return data.geometry || null;
+      if (data.type === "FeatureCollection") return data.features && data.features[0] ? data.features[0].geometry : null;
+      return data;
+    }
+    function polygonPaths(geometry) {
+      if (!geometry) return [];
+      var groups = [];
+      if (geometry.type === "Polygon") groups = geometry.coordinates || [];
+      else if (geometry.type === "MultiPolygon") groups = (geometry.coordinates || []).flat();
+      return groups.map(function(ring) {
+        return ring.map(function(coord) { return { lat: Number(coord[1]), lng: Number(coord[0]) }; });
+      }).filter(function(path) { return path.length >= 3; });
+    }
+    function pointFor(geometry) {
+      if (!geometry || geometry.type !== "Point" || !Array.isArray(geometry.coordinates)) return null;
+      return { lat: Number(geometry.coordinates[1]), lng: Number(geometry.coordinates[0]) };
+    }
+    function boundsForCorners(corners) {
+      if (!Array.isArray(corners) || corners.length < 4) return null;
+      var lngs = corners.map(function(p) { return Number(p[0]); });
+      var lats = corners.map(function(p) { return Number(p[1]); });
+      if (lngs.some(function(v) { return !Number.isFinite(v); }) || lats.some(function(v) { return !Number.isFinite(v); })) return null;
+      return { west: Math.min.apply(null, lngs), east: Math.max.apply(null, lngs), south: Math.min.apply(null, lats), north: Math.max.apply(null, lats) };
+    }
+    class GoogleMapCompatibilityAdapter {
+      constructor(options) {
+        this.container = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
+        if (!this.container) throw new Error("Google Maps container was not found.");
+        this.sources = new globalThis.Map();
+        this.layers = new globalThis.Map();
+        this.handlers = new globalThis.Map();
+        this.isLoaded = false;
+        var center = Array.isArray(options.center) ? { lat: Number(options.center[1]), lng: Number(options.center[0]) } : (options.center || { lat: 0, lng: 0 });
+        this.map = new google.maps.Map(this.container, {
+          center: center,
+          zoom: Number(options.zoom) || 2,
+          mapTypeId: google.maps.MapTypeId.TERRAIN,
+          mapTypeControl: true,
+          mapTypeControlOptions: { style: google.maps.MapTypeControlStyle.DROPDOWN_MENU },
+          fullscreenControl: false,
+          streetViewControl: false,
+          zoomControl: true,
+          clickableIcons: false,
+          backgroundColor: "#071722",
+          controlSize: 28,
+          styles: [
+            { elementType: "labels.text.fill", stylers: [{ color: "#d9e7ed" }] },
+            { elementType: "labels.text.stroke", stylers: [{ color: "#132c3a" }, { weight: 3 }] },
+            { featureType: "water", elementType: "geometry", stylers: [{ color: "#102d42" }] }
+          ]
+        });
+        var self = this;
+        google.maps.event.addListenerOnce(this.map, "idle", function() {
+          self.isLoaded = true;
+          self.emit("load");
+        });
+        google.maps.event.addListener(this.map, "idle", function() { self.emit("move"); });
+      }
+      emit(name, payload) {
+        (this.handlers.get(name) || []).slice().forEach(function(callback) {
+          try { callback(payload); } catch (error) { console.error("Dashboard map callback failed.", error); }
+        });
+      }
+      on(name, callback) {
+        if (name === "error") return this;
+        if (name === "load" && this.isLoaded) { Promise.resolve().then(callback); return this; }
+        var callbacks = this.handlers.get(name) || [];
+        callbacks.push(callback);
+        this.handlers.set(name, callbacks);
+        return this;
+      }
+      addControl() { /* Native Google Maps controls are enabled in the map options. */ }
+      addSource(id, source) { this.sources.set(id, source); }
+      getSource(id) { return this.sources.get(id); }
+      removeSource(id) { this.sources.delete(id); }
+      getLayer(id) { return this.layers.get(id); }
+      removeLayer(id) {
+        var layer = this.layers.get(id);
+        if (layer && layer.overlay && typeof layer.overlay.setMap === "function") layer.overlay.setMap(null);
+        this.layers.delete(id);
+      }
+      addLayer(spec) {
+        var source = this.sources.get(spec.source);
+        if (!source) throw new Error("Dashboard layer source is missing: " + spec.source);
+        var paint = spec.paint || {};
+        var visible = !(spec.layout && spec.layout.visibility === "none");
+        var overlay = null;
+        if (spec.type === "raster") {
+          var imageBounds = boundsForCorners(source.coordinates);
+          if (imageBounds && source.url) {
+            overlay = new google.maps.GroundOverlay(source.url, imageBounds, {
+              opacity: Number.isFinite(Number(paint["raster-opacity"])) ? Number(paint["raster-opacity"]) : 0.82,
+              clickable: false
+            });
+          }
+        } else {
+          var geometry = geometryFor(source.data);
+          if (spec.type === "fill" || spec.type === "line") {
+            var paths = polygonPaths(geometry);
+            if (paths.length) {
+              overlay = new google.maps.Polygon({
+                paths: paths,
+                clickable: false,
+                geodesic: false,
+                fillColor: paint["fill-color"] || "#66e2d3",
+                fillOpacity: spec.type === "fill" ? (Number(paint["fill-opacity"]) || 0.08) : 0,
+                strokeColor: paint["line-color"] || "#66e2d3",
+                strokeOpacity: spec.type === "line" ? 0.95 : 0,
+                strokeWeight: spec.type === "line" ? (Number(paint["line-width"]) || 2) : 0,
+                zIndex: spec.type === "line" ? 30 : 10
+              });
+            }
+          } else if (spec.type === "circle") {
+            var point = pointFor(geometry);
+            if (point && Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
+              overlay = new google.maps.Marker({
+                position: point,
+                clickable: false,
+                zIndex: 50,
+                icon: {
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: Math.max(3, Number(paint["circle-radius"]) || 6),
+                  fillColor: paint["circle-color"] || "#f7c76b",
+                  fillOpacity: 1,
+                  strokeColor: paint["circle-stroke-color"] || "#ffffff",
+                  strokeWeight: Number(paint["circle-stroke-width"]) || 1.5
+                }
+              });
+            }
+          }
+        }
+        var entry = { id: spec.id, spec: spec, source: source, overlay: overlay, visible: visible };
+        this.layers.set(spec.id, entry);
+        if (overlay && typeof overlay.setMap === "function") overlay.setMap(visible ? this.map : null);
+        return entry;
+      }
+      setLayoutProperty(id, property, value) {
+        var layer = this.layers.get(id);
+        if (!layer || property !== "visibility") return;
+        layer.visible = value !== "none";
+        if (layer.overlay && typeof layer.overlay.setMap === "function") layer.overlay.setMap(layer.visible ? this.map : null);
+      }
+      setPaintProperty(id, property, value) {
+        var layer = this.layers.get(id);
+        if (!layer || !layer.overlay) return;
+        if (property === "raster-opacity" && typeof layer.overlay.setOpacity === "function") layer.overlay.setOpacity(Math.max(0, Math.min(1, Number(value))));
+      }
+      fitBounds(bounds, options) {
+        if (!Array.isArray(bounds) || bounds.length < 2) return;
+        var west = Number(bounds[0][0]), south = Number(bounds[0][1]);
+        var east = Number(bounds[1][0]), north = Number(bounds[1][1]);
+        if (![west, south, east, north].every(Number.isFinite)) return;
+        this.map.fitBounds(new google.maps.LatLngBounds({ south: south, west: west, north: north, east: east }), options && options.padding !== undefined ? options.padding : 48);
+        var maxZoom = options && Number(options.maxZoom);
+        if (Number.isFinite(maxZoom) && maxZoom > 0) {
+          var self = this;
+          google.maps.event.addListenerOnce(this.map, "idle", function() {
+            var zoom = self.map.getZoom();
+            if (Number.isFinite(zoom) && zoom > maxZoom) self.map.setZoom(maxZoom);
+          });
+        }
+      }
+      getCenter() { return this.map.getCenter(); }
+      getZoom() { return this.map.getZoom() || 2; }
+      getBearing() { return this.map.getHeading() || 0; }
+      getPitch() { return this.map.getTilt() || 0; }
+      loaded() { return this.isLoaded; }
+      isStyleLoaded() { return this.isLoaded; }
+      jumpTo(options) {
+        options = options || {};
+        var center = options.center;
+        if (Array.isArray(center)) center = { lat: Number(center[1]), lng: Number(center[0]) };
+        var current = this.map.getCenter();
+        var changed = false;
+        if (center && current) {
+          var lat = typeof center.lat === "function" ? center.lat() : Number(center.lat);
+          var lng = typeof center.lng === "function" ? center.lng() : Number(center.lng);
+          if (Number.isFinite(lat) && Number.isFinite(lng) && (Math.abs(current.lat() - lat) > 1e-6 || Math.abs(current.lng() - lng) > 1e-6)) changed = true;
+          if (changed) options.center = { lat: lat, lng: lng };
+        }
+        if (Number.isFinite(Number(options.zoom)) && Math.abs((this.map.getZoom() || 0) - Number(options.zoom)) > 1e-3) changed = true;
+        if (changed) {
+          var settings = {};
+          if (options.center) settings.center = options.center;
+          if (Number.isFinite(Number(options.zoom))) settings.zoom = Number(options.zoom);
+          this.map.setOptions(settings);
+        }
+      }
+      resize() {
+        var center = this.map.getCenter();
+        google.maps.event.trigger(this.map, "resize");
+        if (center) this.map.setCenter(center);
+      }
+    }
+
+    resolve({ Map: GoogleMapCompatibilityAdapter, NavigationControl: function() {} });
+  };
+  script.onerror = function() {
+    unavailable("Google Maps failed to load. Verify VITE_GOOGLE_MAPS_API_KEY, Maps JavaScript API access, and the allowed website referrers.");
+  };
+  document.head.appendChild(script);
+});
+</script>"""
+
+
+def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
+    """Use the same Google Maps JS API as AOI selection while preserving georeferenced raster overlays."""
+    maplibre_import = "import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs';"
+    if maplibre_import not in html:
+        raise ValueError("Interactive dashboard does not match the supported Google Maps migration contract.")
+
+    html = html.replace('<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css">', "")
+    html = html.replace(maplibre_import, "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;", 1)
+    html = html.replace("https://tile.openstreetmap.org/{z}/{x}/{y}.png", "")
+    html = html.replace("© OpenStreetMap contributors.", "Google Maps basemap.")
+    html = html.replace(
+        "The processing report and georeferenced assets remain in this bundle; the basemap/MapLibre library requires an internet connection.",
+        "Google Maps could not load. Check API access and allowed referrers; the processing report and georeferenced assets remain available."
+    )
+    html = html.replace(
+        "Basemap tiles are blocked or unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas.",
+        "Google Maps is unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas."
+    )
+    html = html.replace('content="strict-origin-when-cross-origin"', 'content="origin"')
+    html = html.replace(
+        'script-src \'unsafe-inline\' https://unpkg.com;',
+        'script-src \'unsafe-inline\' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;'
+    )
+    html = html.replace(
+        'style-src \'unsafe-inline\' https://unpkg.com;',
+        'style-src \'unsafe-inline\' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;'
+    )
+    if "https://maps.googleapis.com/maps/api/js?key=" not in html:
+        module_marker = '<script type="module">'
+        if module_marker not in html:
+            raise ValueError("Interactive dashboard has no JavaScript module entry point.")
+        adapter_script = DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT.replace("__GOOGLE_MAPS_API_KEY__", google_maps_api_key)
+        html = html.replace(module_marker, adapter_script + "\n" + module_marker, 1)
+    return html
+
+
 @app.get("/api/displacement-jobs/{job_id}/dashboard")
-async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_current_user)) -> Response:
+async def get_displacement_dashboard(
+    job_id: UUID,
+    google_maps_api_key: str | None = Header(default=None, alias="X-SARGuardian-Google-Maps-Key"),
+    user: dict = Depends(get_current_user),
+) -> Response:
     """Return the verified owner's interactive dashboard as self-contained HTML.
 
     The private Drive ZIP is verified against the signed callback inventory before
@@ -860,6 +1133,11 @@ async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_curr
     artifact = matches[0]
     if artifact["bytes"] > MAX_DASHBOARD_ARCHIVE_BYTES:
         raise HTTPException(status_code=413, detail="This dashboard bundle is too large to open in the interactive viewer. Download the result package instead.")
+    if not isinstance(google_maps_api_key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", google_maps_api_key):
+        raise HTTPException(
+            status_code=503,
+            detail="Google Maps is not configured for the dashboard. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.",
+        )
 
     try:
         received, data = download_private_result(artifact["drive_file_id"])
@@ -903,18 +1181,19 @@ async def get_displacement_dashboard(job_id: UUID, user: dict = Depends(get_curr
         '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a>',
         '<span style="color:var(--aqua);padding:9px">Verified research dashboard</span>',
     )
-    csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' https://unpkg.com; style-src 'unsafe-inline' https://unpkg.com; img-src data: https: blob:; connect-src https:; worker-src blob:; font-src https: data:;"
+    csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com; style-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com; img-src data: https: blob:; connect-src https:; worker-src blob:; font-src https: data:;"
     meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
     if "<head>" not in html:
         raise HTTPException(status_code=409, detail="Dashboard viewer has no HTML head section.")
     html = html.replace("<head>", "<head>" + meta, 1)
     html = _apply_dashboard_presentation(html)
+    html = _apply_google_maps_dashboard(html, google_maps_api_key)
     return Response(content=html, media_type="text/html", headers={
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
-        # The HTML meta policy exposes only the app's origin to cross-origin
-        # basemap hosts, never the private job URL or embedded bundle contents.
-        "Referrer-Policy": "strict-origin-when-cross-origin",
+        # Google Maps HTTP-referrer restrictions need the site origin, not the
+        # private blob path or dashboard bundle URL.
+        "Referrer-Policy": "origin",
     })
 
 
