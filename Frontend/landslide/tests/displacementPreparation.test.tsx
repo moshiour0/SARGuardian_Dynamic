@@ -2,11 +2,26 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { DisplacementJobStatus, DisplacementPreparation, JOB_STATUS_POLL_MS } from '../ui/DisplacementPreparation';
 import { chooseAccountJob } from '../engine/displacementJobSelection';
-import { ScientificResults } from '../ui/ScientificResults';
+import { ScientificResults, writeDashboardHtml } from '../ui/ScientificResults';
 import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/processingStatus';
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
 import { DEFAULT_DISPLACEMENT_OPTIONS } from '../../src/api/catalog';
+
+describe('same-origin dashboard popup', () => {
+  it('writes verified HTML into the site-origin popup rather than navigating to a blob URL', () => {
+    const document = {
+      open: vi.fn(),
+      write: vi.fn(),
+      close: vi.fn(),
+    };
+    writeDashboardHtml({ document } as unknown as Window, '<!doctype html><html><body>verified</body></html>');
+
+    expect(document.open).toHaveBeenCalledOnce();
+    expect(document.write).toHaveBeenCalledWith('<!doctype html><html><body>verified</body></html>');
+    expect(document.close).toHaveBeenCalledOnce();
+  });
+});
 
 describe('displacement preparation route', () => {
   const user = { getIdToken: vi.fn() } as never;
