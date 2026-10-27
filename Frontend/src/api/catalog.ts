@@ -92,6 +92,11 @@ export type DisplacementJob = Partial<DisplacementProcessingOptions> & {
   aoi_wkt: string;
   start_date: string;
   end_date: string;
+  place_name?: string | null;
+  place_latitude?: number | null;
+  place_longitude?: number | null;
+  target_latitude?: number | null;
+  target_longitude?: number | null;
   stage: string;
   github_run_id?: string | null;
   github_run_url?: string | null;
