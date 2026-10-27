@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { DisplacementJob } from '../../src/api/catalog';
 import { getInteractiveDashboardHtml } from '../../src/api/catalog';
+import { writeDashboardHtml } from './dashboardPopup';
 
 function driveFolderUrl(job: DisplacementJob): string | undefined {
   if (job.state !== 'succeeded' || !job.result_summary) return undefined;
@@ -54,9 +55,10 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
     setOpening(true);
     try {
       const html = await getInteractiveDashboardHtml(job.id, user);
-      const blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-      popup.location.replace(blobUrl);
-      popup.addEventListener('load', () => URL.revokeObjectURL(blobUrl), { once: true });
+      // Keep the popup at the Vercel-origin about:blank document instead of
+      // navigating to a blob: URL. Google Maps HTTP-referrer restrictions then
+      // see the same site origin as the AOI-selection map.
+      writeDashboardHtml(popup, html);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not open the interactive dashboard.';
       setDashboardError(message);
