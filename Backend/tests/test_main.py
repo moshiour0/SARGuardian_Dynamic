@@ -310,11 +310,16 @@ def test_interactive_dashboard_does_not_require_google_maps_key(monkeypatch) -> 
 
     called = []
     monkeypatch.setattr(main_module, "get_job_store", lambda: Store())
-    monkeypatch.setattr(main_module, "download_private_result", lambda *_args: ({"bytes": len(payload)}, payload))
+
+    def download_verified_bundle(*_args):
+        called.append(True)
+        return {"bytes": len(payload)}, payload
+
+    monkeypatch.setattr(main_module, "download_private_result", download_verified_bundle)
     response = authenticated_client().get(f"/api/displacement-jobs/{job_id}/dashboard")
 
     assert response.status_code == 200
-    assert called == []
+    assert called == [True]
     assert "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs" in response.text
     assert "maps.googleapis.com/maps/api/js?key=" not in response.text
 
