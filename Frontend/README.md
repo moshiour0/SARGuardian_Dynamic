@@ -52,7 +52,7 @@ For Vercel, set the project root to `Frontend/`, use the Vite preset, build comm
 before building. The backend is a separate Vercel project rooted at `Backend/`; set its
 server-side variables in that project only. The included SPA rewrite supports opening `/landslide` directly.
 
-## Included files
+## Included files:
 
 - `src/`: home page, navigation, components, styles, Firebase configuration.
 - `landslide/ui/`: Landslide investigation screen and its styles.
