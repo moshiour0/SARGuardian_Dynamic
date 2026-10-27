@@ -757,7 +757,10 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
       "No display name is attached to this run. A product CRID is provenance metadata, not evidence that target-local motion was measured.":
       "Named place context is attached. Check each selected pair before interpreting target-specific values.";
     if(targetStatus==="IN_AOI_TARGET_CAPTURED")targetDescription+=" A target coordinate is recorded inside the AOI.";
-    else if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
+    else {
+      targetDescription+=" No valid in-AOI measurement target was recorded for this run. To report target-local displacement and local detection floors, perform a target-aware measurement pass with both target_latitude and target_longitude set to an explicit WGS84 point inside this polygon. Do not substitute the AOI center or product CRID for a target coordinate.";
+      if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
+    }
     var rows=[
       {label:"Target-local displacement",value:measurements+" / "+obs.length+" pairs measured",note:measurements===0?"Not measured is not the same as zero motion. No target-local LOS/range/along-track displacement is reported for these pairs.":"Only pairs marked MEASURED are counted; do not fill missing pairs with zero.",good:measurements>0},
       {label:"Local detection floor",value:floors+" / "+obs.length+" pairs measured",note:floors===0?"No measured target-local detection floor is available. A missing floor is not a 0 mm/day threshold.":"Noise/detectability bounds are not observed displacement or velocity.",good:floors>0},
