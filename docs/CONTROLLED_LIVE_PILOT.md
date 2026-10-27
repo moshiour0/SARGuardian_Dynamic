@@ -1,8 +1,10 @@
 # Controlled live science pilot
 
-Run this only after migration `20261024111404_scientific_request_contract.sql` has been applied,
-the target repository workflow has been reviewed, and authorized Earthdata and private
-Drive credentials have been configured. The normal test suite uses deterministic mocks;
+Run this only after migrations `20261024111404_scientific_request_contract.sql` and
+`20261027123456_place_target_contract.sql` have been applied in timestamp order, the target
+repository workflows and dashboard-source commit have been reviewed, and authorized Earthdata
+and private Drive credentials have been configured. The selected map point is optional and must
+fall inside the submitted AOI before it becomes a target for pair-local sampling. The normal test suite uses deterministic mocks;
 it does not establish geophysical accuracy.
 
 1. Create a small, closed EPSG:4326 polygon with known NISAR L2 coverage and an inclusive
@@ -11,10 +13,12 @@ it does not establish geophysical accuracy.
    `acquisition_window=secondary-acquisition-in-window`.
 2. Submit through the signed-in website. Confirm the job has a new immutable option set,
    Actions run ID, and signed running callbacks.
-3. Inspect the result manifest. Confirm exact AOI hash, source/secondary dates, catalog
-   maturity evidence, release exclusions, source HDF5 hashes/inventory, raster validation
-   reports, and private Drive remote receipts. Check each GeoTIFF in a GIS before relying
-   on it for research.
+3. Inspect the result manifest. Confirm exact AOI hash, site/target coordinates and inside-AOI
+   eligibility, source/secondary dates, catalog maturity evidence, release exclusions, source
+   HDF5 hashes/inventory, target-measurement and local-floor statuses, raster validation reports,
+   and private Drive remote receipts. Compare only compatible source grids and inspect each
+   GeoTIFF in a GIS before relying on it for research. The target-local measurements are per-pair,
+   not automatically a cumulative displacement series.
 4. Confirm that the API owner download works and a different user receives no artifact.
    Confirm Drive contains no public `anyone` permission. Do not expose direct Drive IDs.
 5. Confirm the `raw_cleanup_verified` stage follows, rather than precedes, every validated

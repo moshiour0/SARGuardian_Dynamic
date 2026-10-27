@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { DisplacementJobStatus, DisplacementPreparation, JOB_STATUS_POLL_MS } from '../ui/DisplacementPreparation';
+import { chooseAccountJob } from '../engine/displacementJobSelection';
 import { ScientificResults } from '../ui/ScientificResults';
 import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/processingStatus';
 import { prepareInvestigation } from '../engine/investigation';
@@ -24,6 +25,37 @@ describe('displacement preparation route', () => {
     expect(html).not.toContain('POLYGON');
     expect(html).not.toContain('Copy Payload');
   });
+  it('does not reuse a completed displacement result for another selected place or target', () => {
+    const coordinates = [[85, 27], [85.001, 27], [85, 27.001]] as const;
+    const preparation = prepareInvestigation({
+      coordinates: [...coordinates], areaClosed: true, startDate: '2026-10-01',
+      endDate: '2026-10-22', today: '2026-10-23',
+      place: { name: 'Test location', latitude: 27.0002, longitude: 85.0002 },
+    });
+    expect(preparation.valid).toBe(true);
+    if (!preparation.valid) return;
+    const base = {
+      state: 'succeeded', stage: 'completed', aoi_wkt: preparation.payload.aoi_wkt,
+      start_date: '2026-10-01', end_date: '2026-10-22',
+      product_type: 'BOTH', acquisition_window: 'secondary-acquisition-in-window',
+      retention_mode: 'derived-only', processing_profile: 'full-aoi',
+      created_at: '2026-10-23T10:00:00Z', updated_at: '2026-10-23T10:10:00Z',
+    };
+    const oldPlace = {
+      ...base, id: 'old-place-job', place_name: 'Nearby village',
+      place_latitude: 27.0003, place_longitude: 85.0003,
+      target_latitude: 27.0003, target_longitude: 85.0003,
+    };
+    const matching = {
+      ...base, id: 'matching-place-job', place_name: 'Test location',
+      place_latitude: 27.0002, place_longitude: 85.0002,
+      target_latitude: 27.0002, target_longitude: 85.0002,
+    };
+    const options = DEFAULT_DISPLACEMENT_OPTIONS;
+    expect(chooseAccountJob([oldPlace, matching] as never, preparation, options)?.id).toBe('matching-place-job');
+    expect(chooseAccountJob([oldPlace] as never, preparation, options)).toBeNull();
+  });
+
   it('uses existing navigation for both workflows and back, suppressing duplicate pushes', () => {
     const push = vi.fn();
     let path = navigatePath(LANDSLIDE_RESULTS_PATH, LANDSLIDE_PATH, push);
@@ -68,7 +100,21 @@ describe('displacement preparation route', () => {
     expect(html).toContain('>3<');
     expect(html).toContain('Retry task');
     expect(html).toContain('Go to map');
+    expect(html).toContain('Selected place:');
+    expect(html).toContain('Measurement target:');
+    expect(html).toContain('Not supplied inside the submitted AOI');
     expect(html).not.toContain('Start displacement processing');
+
+    const targetedJob = {
+      ...failedJob, place_name: 'Rasuwa foothill', place_latitude: 27.01, place_longitude: 85.01,
+      target_latitude: 27.01, target_longitude: 85.01,
+    } as const;
+    const targetedHtml = renderToStaticMarkup(<DisplacementJobStatus job={targetedJob as never} pendingAction={null}
+      clock={Date.parse('2026-10-24T10:02:00Z')} granuleCounts={null} onCancel={() => {}} onRefresh={() => {}}
+      onRetry={() => {}} onBack={() => {}} />);
+    expect(targetedHtml).toContain('Rasuwa foothill');
+    expect(targetedHtml).toContain('27.01000, 85.01000');
+    expect(targetedHtml).toContain('not a stable-ground reference');
 
     const runningWithWorkerCounts = { ...failedJob, state: 'running', stage: 'products_discovered',
       github_run_url: 'https://github.com/shourov-04/SARGuardian_Dynamic/actions/runs/123', result_summary: {

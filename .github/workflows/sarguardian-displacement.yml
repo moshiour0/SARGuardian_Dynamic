@@ -45,6 +45,31 @@ run-name: Displacement ${{ inputs.job_id }}
         default: full-aoi
         type: choice
         options: [validation-pilot, full-aoi]
+      place_name:
+        description: Optional selected place name for dashboard context; not hazard evidence.
+        required: false
+        type: string
+        default: ''
+      place_latitude:
+        description: Optional selected place latitude in WGS84.
+        required: false
+        type: string
+        default: ''
+      place_longitude:
+        description: Optional selected place longitude in WGS84.
+        required: false
+        type: string
+        default: ''
+      target_latitude:
+        description: Optional measurement target latitude; must lie inside submitted AOI.
+        required: false
+        type: string
+        default: ''
+      target_longitude:
+        description: Optional measurement target longitude; must lie inside submitted AOI.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -78,10 +103,30 @@ jobs:
           ACQUISITION_WINDOW: ${{ inputs.acquisition_window }}
           RETENTION_MODE: ${{ inputs.retention_mode }}
           PROCESSING_PROFILE: ${{ inputs.processing_profile }}
+          PLACE_NAME: ${{ inputs.place_name }}
+          PLACE_LATITUDE: ${{ inputs.place_latitude }}
+          PLACE_LONGITUDE: ${{ inputs.place_longitude }}
+          TARGET_LATITUDE: ${{ inputs.target_latitude }}
+          TARGET_LONGITUDE: ${{ inputs.target_longitude }}
         shell: bash
         run: |
           set -euo pipefail
-          value="$(PYTHONPATH="$GITHUB_WORKSPACE/Backend" python -c 'import os; from science_adapter.geometry import processing_fingerprint; print(processing_fingerprint(aoi_wkt=os.environ["AOI_WKT"], start_date=os.environ["START_DATE"], end_date=os.environ["END_DATE"], product_type=os.environ["PRODUCT_TYPE"], acquisition_window=os.environ["ACQUISITION_WINDOW"], retention_mode=os.environ["RETENTION_MODE"], processing_profile=os.environ["PROCESSING_PROFILE"]))')"
+          value="$(PYTHONPATH="$GITHUB_WORKSPACE/Backend" python - <<'PY'
+          import os
+          from science_adapter.geometry import processing_fingerprint
+          def optional_float(name):
+              value = os.environ.get(name, "").strip()
+              return float(value) if value else None
+          print(processing_fingerprint(
+              aoi_wkt=os.environ["AOI_WKT"], start_date=os.environ["START_DATE"], end_date=os.environ["END_DATE"],
+              product_type=os.environ["PRODUCT_TYPE"], acquisition_window=os.environ["ACQUISITION_WINDOW"],
+              retention_mode=os.environ["RETENTION_MODE"], processing_profile=os.environ["PROCESSING_PROFILE"],
+              place_name=os.environ.get("PLACE_NAME", "").strip() or None,
+              place_latitude=optional_float("PLACE_LATITUDE"), place_longitude=optional_float("PLACE_LONGITUDE"),
+              target_latitude=optional_float("TARGET_LATITUDE"), target_longitude=optional_float("TARGET_LONGITUDE"),
+          ))
+          PY
+          )"
           echo "value=$value" >> "$GITHUB_OUTPUT"
 
       - name: Report running state
@@ -109,12 +154,17 @@ jobs:
       start_date: ${{ inputs.start_date }}
       end_date: ${{ inputs.end_date }}
       date_filter_mode: ${{ inputs.acquisition_window }}
-      run_profile: full-aoi-baseline
+      run_profile: ${{ inputs.processing_profile == 'full-aoi' && 'full-aoi-baseline' || 'validation-pilot' }}
       retention_profile: ${{ inputs.retention_mode }}
       product_type: ${{ inputs.product_type }}
       job_id: ${{ inputs.job_id }}
       callback_url: ${{ inputs.callback_url }}
       request_fingerprint: ${{ needs.report-running.outputs.request_fingerprint }}
+      place_name: ${{ inputs.place_name }}
+      place_latitude: ${{ inputs.place_latitude }}
+      place_longitude: ${{ inputs.place_longitude }}
+      target_latitude: ${{ inputs.target_latitude }}
+      target_longitude: ${{ inputs.target_longitude }}
     secrets: inherit
 
   report-terminal:
@@ -161,13 +211,33 @@ jobs:
           ACQUISITION_WINDOW: ${{ inputs.acquisition_window }}
           RETENTION_MODE: ${{ inputs.retention_mode }}
           PROCESSING_PROFILE: ${{ inputs.processing_profile }}
+          PLACE_NAME: ${{ inputs.place_name }}
+          PLACE_LATITUDE: ${{ inputs.place_latitude }}
+          PLACE_LONGITUDE: ${{ inputs.place_longitude }}
+          TARGET_LATITUDE: ${{ inputs.target_latitude }}
+          TARGET_LONGITUDE: ${{ inputs.target_longitude }}
         shell: bash
         run: |
           set -euo pipefail
           root="$RUNNER_TEMP/sarguardian-account-result"
           request_fingerprint="$REQUEST_FINGERPRINT"
           if [[ -z "$request_fingerprint" ]]; then
-            request_fingerprint="$(PYTHONPATH="$GITHUB_WORKSPACE/Backend" python -c 'import os; from science_adapter.geometry import processing_fingerprint; print(processing_fingerprint(aoi_wkt=os.environ["AOI_WKT"], start_date=os.environ["START_DATE"], end_date=os.environ["END_DATE"], product_type=os.environ["PRODUCT_TYPE"], acquisition_window=os.environ["ACQUISITION_WINDOW"], retention_mode=os.environ["RETENTION_MODE"], processing_profile=os.environ["PROCESSING_PROFILE"]))')"
+            request_fingerprint="$(PYTHONPATH="$GITHUB_WORKSPACE/Backend" python - <<'PY'
+          import os
+          from science_adapter.geometry import processing_fingerprint
+          def optional_float(name):
+              value = os.environ.get(name, "").strip()
+              return float(value) if value else None
+          print(processing_fingerprint(
+              aoi_wkt=os.environ["AOI_WKT"], start_date=os.environ["START_DATE"], end_date=os.environ["END_DATE"],
+              product_type=os.environ["PRODUCT_TYPE"], acquisition_window=os.environ["ACQUISITION_WINDOW"],
+              retention_mode=os.environ["RETENTION_MODE"], processing_profile=os.environ["PROCESSING_PROFILE"],
+              place_name=os.environ.get("PLACE_NAME", "").strip() or None,
+              place_latitude=optional_float("PLACE_LATITUDE"), place_longitude=optional_float("PLACE_LONGITUDE"),
+              target_latitude=optional_float("TARGET_LATITUDE"), target_longitude=optional_float("TARGET_LONGITUDE"),
+          ))
+          PY
+          )"
           fi
           sequence=1
           if [[ "$RUNNING_REPORTED" == "true" ]]; then sequence=2; fi

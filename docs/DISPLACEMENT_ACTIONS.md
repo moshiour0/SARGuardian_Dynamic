@@ -27,8 +27,11 @@ The existing `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, Firebase service-accou
   account with Drive upload access.
 - `GOOGLE_DRIVE_FOLDER_ID`: the parent folder for per-job result folders.
 
-The account-facing workflow calls the vendored dynamic-AOI streaming pipeline from
-`moshiour0/SARGuardian-backend`. It pins `moshiour0/SARGuardian` at
+The account-facing API dispatches only the input names declared by the Dynamic wrapper
+workflow (`sarguardian-displacement.yml`). The wrapper binds the WKT/date/options plus place
+and target metadata into one request fingerprint, then forwards those fields into the
+vendored dynamic-AOI streaming pipeline from `moshiour0/SARGuardian-backend`. The wrapper
+pins `moshiour0/SARGuardian` at
 `10639a916c9829850775410b3ed7de62e527770d`, uses the submitted WKT polygon unchanged,
 queries ASF separately by family and BETA/PROVISIONAL maturity, and retains
 catalog/identity evidence. Account jobs use both product families, select pairs by an
@@ -50,9 +53,18 @@ prevents a success callback.
 Before reporting success, the wrapper cross-checks the selected-product manifest,
 processing report, PASS run summary, checksummed private Drive receipt, submitted request
 fingerprint and exact science/orchestration commits. A zero process exit code is
-insufficient. The supported result is AOI-clipped, per-product GUNW/GOFF displacement
-screening; it is not a common-reference time series or hazard forecast. Callbacks have
+insufficient. When an in-AOI target is supplied, the worker can retain target-window GUNW/GOFF measurements
+and pair-specific local noise-floor estimates. A missing/invalid target yields an explicit
+not-run/unavailable status, not a fabricated value. These pairwise metrics do not establish a
+shared stable-ground datum. The interactive dashboard may show compatible same-grid pair maps
+side by side and a separately labelled hypothetical sensitivity scenario, but it does not
+compute an unsupported difference, join pair medians as a cumulative time series, or forecast
+a hazard. The supported result remains AOI-clipped, per-product GUNW/GOFF displacement screening;
+it is not a validated hazard alert. Callbacks have
 signed, ordered sequence numbers and bind the job ID plus request fingerprint. GitHub
 terminal success without the signed completion callback is recorded as failure.
 
-Run [20261022203034_displacement_jobs.sql](../Backend/supabase/migrations/20261022203034_displacement_jobs.sql) after the prior processing-job migration. Keep direct browser access revoked; the trusted backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.
+Apply the migration files in ascending timestamp order, including
+[20261027123456_place_target_contract.sql](../Backend/supabase/migrations/20261027123456_place_target_contract.sql),
+before deploying the place/target API contract. Keep direct browser access revoked; the trusted
+backend uses the Supabase service-role key and verifies Firebase ownership before reads or writes.

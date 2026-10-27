@@ -94,13 +94,42 @@ def validate_wkt(wkt: str, *, max_area_km2: float = MAX_AOI_AREA_KM2, max_vertic
     return ValidatedAOI(canonical, hashlib.sha256(canonical.encode("utf-8")).hexdigest(), area, closed)
 
 
+def point_in_polygon(longitude: float, latitude: float, aoi: ValidatedAOI) -> bool:
+    """Return whether a WGS84 point lies inside or on the boundary of this AOI."""
+    if not (-180 <= longitude <= 180 and -90 <= latitude <= 90):
+        return False
+    inside = False
+    ring = aoi.coordinates
+    for index in range(len(ring) - 1):
+        x1, y1 = ring[index]
+        x2, y2 = ring[index + 1]
+        cross = (longitude - x1) * (y2 - y1) - (latitude - y1) * (x2 - x1)
+        on_segment = (
+            abs(cross) <= 1e-10
+            and min(x1, x2) - 1e-10 <= longitude <= max(x1, x2) + 1e-10
+            and min(y1, y2) - 1e-10 <= latitude <= max(y1, y2) + 1e-10
+        )
+        if on_segment:
+            return True
+        if (y1 > latitude) != (y2 > latitude):
+            crossing_x = (x2 - x1) * (latitude - y1) / (y2 - y1) + x1
+            if longitude < crossing_x:
+                inside = not inside
+    return inside
+
+
 def processing_fingerprint(*, aoi_wkt: str, start_date: str, end_date: str,
                            product_type: str = "BOTH", acquisition_window: str = "secondary-acquisition-in-window",
-                           retention_mode: str = "derived-only", processing_profile: str = "validation-pilot") -> str:
+                           retention_mode: str = "derived-only", processing_profile: str = "validation-pilot",
+                           place_name: str | None = None, place_latitude: float | None = None,
+                           place_longitude: float | None = None, target_latitude: float | None = None,
+                           target_longitude: float | None = None) -> str:
     payload = {
         "aoi_sha256": validate_wkt(aoi_wkt).sha256, "start_date": str(start_date), "end_date": str(end_date),
         "product_type": product_type, "acquisition_window": acquisition_window,
         "retention_mode": retention_mode, "processing_profile": processing_profile,
-        "science_commit": SCIENCE_COMMIT, "output_contract": 2,
+        "place_name": place_name, "place_latitude": place_latitude, "place_longitude": place_longitude,
+        "target_latitude": target_latitude, "target_longitude": target_longitude,
+        "science_commit": SCIENCE_COMMIT, "output_contract": 3,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

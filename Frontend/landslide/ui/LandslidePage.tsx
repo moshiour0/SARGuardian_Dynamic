@@ -1165,12 +1165,13 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
   const polygonAreaKm2 = coordinates.length > 2 ? calculateGeodesicAreaKm2(coordinates) : 0;
   const catalogValidation = prepareInvestigation({
     coordinates,
+    place: location,
     areaClosed,
     startDate: windowStart,
     endDate: windowEnd,
     today,
   });
-  const selectionKey = JSON.stringify([coordinates, areaClosed, windowStart, windowEnd]);
+  const selectionKey = JSON.stringify([coordinates, areaClosed, windowStart, windowEnd, location]);
   const currentSelectionKey = useRef(selectionKey);
   currentSelectionKey.current = selectionKey;
   const displacementNavigating = useRef(false);
@@ -1201,6 +1202,11 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
         startDate: catalogValidation.payload.start_date,
         endDate: catalogValidation.payload.end_date,
         idempotencyKey: crypto.randomUUID(),
+        place_name: catalogValidation.payload.place_name,
+        place_latitude: catalogValidation.payload.place_latitude,
+        place_longitude: catalogValidation.payload.place_longitude,
+        target_latitude: catalogValidation.payload.target_latitude,
+        target_longitude: catalogValidation.payload.target_longitude,
         ...processingOptions,
       }, user);
       onDisplacementTaskActivityChange(true);

@@ -361,6 +361,11 @@ def _create_and_dispatch_displacement_job(owner_uid: str, request: CreateDisplac
         "start_date": request.start_date.isoformat(),
         "end_date": request.end_date.isoformat(),
         **{name: getattr(request, name) for name in PROCESSING_OPTION_DEFAULTS},
+        "place_name": request.place_name,
+        "place_latitude": request.place_latitude,
+        "place_longitude": request.place_longitude,
+        "target_latitude": request.target_latitude,
+        "target_longitude": request.target_longitude,
         "request_fingerprint": displacement_request_fingerprint(request.model_dump()),
         "worker_contract_version": 2,
         "stage": "queued",
@@ -484,6 +489,9 @@ def resubmit_displacement_job(
     replacement = CreateDisplacementJobRequest(
         aoi_wkt=str(source["aoi_wkt"]), start_date=source["start_date"], end_date=source["end_date"],
         idempotency_key=request.idempotency_key,
+        place_name=source.get("place_name"), place_latitude=source.get("place_latitude"),
+        place_longitude=source.get("place_longitude"), target_latitude=source.get("target_latitude"),
+        target_longitude=source.get("target_longitude"),
         **ACCOUNT_PROCESSING_OPTIONS,
     )
     return _create_and_dispatch_displacement_job(owner_uid, replacement, store)

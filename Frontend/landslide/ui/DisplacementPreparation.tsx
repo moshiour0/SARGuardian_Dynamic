@@ -11,6 +11,7 @@ import {
   type DisplacementJob,
 } from '../../src/api/catalog';
 import { ScientificResults } from './ScientificResults';
+import { chooseAccountJob } from '../engine/displacementJobSelection';
 import { ELAPSED_TICK_MS, formatElapsed, type GranuleCounts } from './processingStatus';
 
 const activeStates = new Set(['queued', 'dispatching', 'running']);
@@ -54,6 +55,16 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
     <h2>Processing status</h2>
     <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
     <p><b>Stage:</b> {job.stage}</p>
+    <div className="displacement-place-context" aria-label="Selected place and measurement target">
+      <p><b>Selected place:</b> {job.place_name || 'No named place selected'}</p>
+      {Number.isFinite(job.place_latitude) && Number.isFinite(job.place_longitude)
+        && <p><b>Place coordinates:</b> {job.place_latitude!.toFixed(5)}, {job.place_longitude!.toFixed(5)}
+          {job.target_latitude == null || job.target_longitude == null ? ' (context marker only; outside AOI or not selected as an in-AOI target)' : ''}</p>}
+      {Number.isFinite(job.target_latitude) && Number.isFinite(job.target_longitude)
+        ? <p><b>Measurement target:</b> {job.target_latitude!.toFixed(5)}, {job.target_longitude!.toFixed(5)}
+          <small style={{ display: 'block' }}>In-AOI pair sampling point only; not a stable-ground reference and not a hazard finding.</small></p>
+        : <p><b>Measurement target:</b> Not supplied inside the submitted AOI. Target-local metrics and common-reference inversion remain withheld.</p>}
+    </div>
     <p><b>Submitted:</b> {new Date(job.created_at).toLocaleString()}</p>
     <p><b>Age:</b> <time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></p>
     {counts && <div className="catalog-stats displacement-granule-counts" aria-label="Granule counts">
@@ -73,26 +84,6 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
     </div>}
     <ScientificResults job={job} user={user} />
   </section>;
-}
-
-function chooseAccountJob(jobs: DisplacementJob[], preparation: PreparedInvestigation, options: DisplacementProcessingOptions) {
-  const matching = preparation.valid
-    ? jobs.filter((candidate) => candidate.aoi_wkt === preparation.payload.aoi_wkt
-      && candidate.start_date === preparation.payload.start_date
-      && candidate.end_date === preparation.payload.end_date
-      && (candidate.product_type || 'BOTH') === options.product_type
-      && (candidate.acquisition_window || 'secondary-acquisition-in-window') === options.acquisition_window
-      && (candidate.retention_mode || 'derived-only') === options.retention_mode
-      && (candidate.processing_profile || 'full-aoi') === options.processing_profile)
-    : [];
-  // The API returns newest-first. Once no task is running, reopen the newest
-  // matching job (or newest account job) so an older successful result can
-  // never masquerade as the current failed request.
-  return matching.find((candidate) => activeStates.has(candidate.state))
-    || jobs.find((candidate) => activeStates.has(candidate.state))
-    || matching[0]
-    || jobs[0]
-    || null;
 }
 
 export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLACEMENT_OPTIONS, granuleCounts = null, onBack, onTaskActivityChange = noopTaskActivityChange, user }: { preparation: PreparedInvestigation; options?: DisplacementProcessingOptions; granuleCounts?: GranuleCounts | null; onBack: () => void; onTaskActivityChange?: (active: boolean) => void; user: User }) {

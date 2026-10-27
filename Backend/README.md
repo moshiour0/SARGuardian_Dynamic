@@ -96,7 +96,7 @@ or long-running process is required. Set `APP_ENV=production` and an explicit tr
 comma-separated `CORS_ORIGINS` value containing the final Vercel frontend origin. Also set
 `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `FIREBASE_SERVICE_ACCOUNT_JSON` in Vercel's
 server-side environment settings. Do not set `GOOGLE_APPLICATION_CREDENTIALS` to a Windows
-path on Vercel. Apply the timestamped SQL files in `supabase/migrations/` in ascending timestamp order through `20261024111404_scientific_request_contract.sql` before enabling dispatch. The Actions worker retains private, verified results and reports them through the existing owner-scoped displacement API; see [`../docs/DISPLACEMENT_ACTIONS.md`](../docs/DISPLACEMENT_ACTIONS.md) and [`../docs/CONTROLLED_LIVE_PILOT.md`](../docs/CONTROLLED_LIVE_PILOT.md).
+path on Vercel. Apply the timestamped SQL files in `supabase/migrations/` in ascending timestamp order through `20261027123456_place_target_contract.sql` before enabling dispatch. This latest migration adds immutable map-place context and optional in-AOI target coordinates; it must be applied before deploying code that writes those fields. The Actions worker retains private, verified results and reports them through the existing owner-scoped displacement API; see [`../docs/DISPLACEMENT_ACTIONS.md`](../docs/DISPLACEMENT_ACTIONS.md) and [`../docs/CONTROLLED_LIVE_PILOT.md`](../docs/CONTROLLED_LIVE_PILOT.md).
 
 For the frontend project, use the Vite preset, root directory `Frontend/`, build command
 `npm run build`, and output directory `dist`. Set the public frontend variables documented in
@@ -138,9 +138,14 @@ is called. Results preserve actual ASF granule names, product types, dates, dire
 processing level, and size metadata where ASF provides them. Missing metadata remains absent.
 
 `POST /api/displacement-jobs` creates an authenticated durable processing request. It stores
-an immutable AOI/date/product/window/retention/profile snapshot, dispatches only when
-server-side Actions settings are enabled, and accepts completion only from the bound signed
-worker callback. Normal catalog preflight remains metadata-only.
+an immutable AOI/date/product/window/retention/profile snapshot plus selected place context and
+optional in-AOI target coordinates. The target is accepted only when its WGS84 point lies within
+the exact submitted polygon and is bound into the request fingerprint. Place context is not a
+measurement, and the target is not a stable reference point: cumulative time-series inversion
+remains blocked unless the science workflow proves a compatible common datum across the connected
+acquisition network. The workflow is dispatched only when server-side Actions settings are enabled,
+and completion is accepted only from the bound signed worker callback. Normal catalog preflight
+remains metadata-only.
 
 ## Tests
 

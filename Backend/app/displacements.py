@@ -11,9 +11,9 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from science_adapter.geometry import processing_fingerprint, validate_wkt
+from science_adapter.geometry import point_in_polygon, processing_fingerprint, validate_wkt
 
 from .config import RuntimeSettings
 from .jobs import JobState
@@ -28,6 +28,31 @@ class CreateDisplacementJobRequest(BaseModel):
     acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
     retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
     processing_profile: Literal["validation-pilot", "full-aoi"] = "full-aoi"
+    place_name: str | None = Field(default=None, max_length=200)
+    place_latitude: float | None = Field(default=None, ge=-90, le=90)
+    place_longitude: float | None = Field(default=None, ge=-180, le=180)
+    target_latitude: float | None = Field(default=None, ge=-90, le=90)
+    target_longitude: float | None = Field(default=None, ge=-180, le=180)
+
+    @field_validator("place_name")
+    @classmethod
+    def normalize_place_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = " ".join(value.split())
+        return cleaned[:200] or None
+
+    @model_validator(mode="after")
+    def validate_place_and_target(self) -> "CreateDisplacementJobRequest":
+        if (self.place_latitude is None) != (self.place_longitude is None):
+            raise ValueError("Place latitude and longitude must be provided together.")
+        if (self.target_latitude is None) != (self.target_longitude is None):
+            raise ValueError("Measurement target latitude and longitude must be provided together.")
+        if self.target_latitude is not None and self.target_longitude is not None:
+            aoi = validate_wkt(self.aoi_wkt)
+            if not point_in_polygon(self.target_longitude, self.target_latitude, aoi):
+                raise ValueError("Measurement target must lie inside the submitted AOI polygon.")
+        return self
 
     @field_validator("aoi_wkt")
     @classmethod
@@ -54,6 +79,9 @@ def request_fingerprint(record: dict[str, Any]) -> str:
     return processing_fingerprint(
         aoi_wkt=record["aoi_wkt"], start_date=str(record["start_date"]), end_date=str(record["end_date"]),
         **{name: record.get(name, default) for name, default in PROCESSING_OPTION_DEFAULTS.items()},
+        **{name: record.get(name) for name in (
+            "place_name", "place_latitude", "place_longitude", "target_latitude", "target_longitude",
+        )},
     )
 
 
@@ -67,6 +95,11 @@ class DisplacementJobResponse(BaseModel):
     acquisition_window: Literal["secondary-acquisition-in-window", "both-acquisitions-in-window"] = "secondary-acquisition-in-window"
     retention_mode: Literal["derived-only", "full-lossless"] = "derived-only"
     processing_profile: Literal["validation-pilot", "full-aoi"] = "validation-pilot"
+    place_name: str | None = None
+    place_latitude: float | None = None
+    place_longitude: float | None = None
+    target_latitude: float | None = None
+    target_longitude: float | None = None
     stage: str
     github_run_id: str | None = None
     github_run_url: str | None = None
@@ -112,18 +145,25 @@ def dispatch_workflow(settings: RuntimeSettings, job_id: UUID, request: CreateDi
     if not settings.displacement_actions_enabled:
         raise GitHubDispatchError("Displacement processing is not configured on this server.")
     endpoint = f"{settings.github_api_url}/repos/{settings.github_actions_repository}/actions/workflows/{settings.github_actions_workflow}/dispatches"
-    # Contract of moshiour0/SARGuardian-backend's sarguardian-aoi-wkt-dashboard.yml.
-    # The dashboard workflow deliberately names its acquisition/date/retention
-    # inputs differently from the account API. Keep this mapping explicit so we
-    # never send undeclared workflow_dispatch inputs (GitHub rejects those with 422).
+    # Contract of the documented/default Dynamic wrapper workflow:
+    # .github/workflows/sarguardian-displacement.yml. It computes the immutable
+    # request fingerprint itself and maps these account-facing option names to
+    # the inner AOI workflow's date_filter_mode/run_profile/retention_profile.
+    # Send ONLY inputs declared by the configured wrapper; undeclared GitHub
+    # dispatch inputs cause HTTP 422 and stop processing before any download.
     body = json.dumps({"ref": settings.github_actions_ref, "inputs": {
         "job_id": str(job_id), "aoi_wkt": request.aoi_wkt,
         "start_date": request.start_date.isoformat(), "end_date": request.end_date.isoformat(),
         "callback_url": settings.public_api_url,
-        "request_fingerprint": request_fingerprint(request.model_dump()),
-        "date_filter_mode": request.acquisition_window,
-        "run_profile": "full-aoi-baseline" if request.processing_profile == "full-aoi" else "validation-pilot",
-        "retention_profile": request.retention_mode,
+        "product_type": request.product_type,
+        "acquisition_window": request.acquisition_window,
+        "retention_mode": request.retention_mode,
+        "processing_profile": request.processing_profile,
+        "place_name": request.place_name or "",
+        "place_latitude": "" if request.place_latitude is None else str(request.place_latitude),
+        "place_longitude": "" if request.place_longitude is None else str(request.place_longitude),
+        "target_latitude": "" if request.target_latitude is None else str(request.target_latitude),
+        "target_longitude": "" if request.target_longitude is None else str(request.target_longitude),
     }}).encode("utf-8")
     request_obj = Request(endpoint, data=body, method="POST", headers={
         "Accept": "application/vnd.github+json", "Authorization": f"Bearer {settings.github_actions_token}",
