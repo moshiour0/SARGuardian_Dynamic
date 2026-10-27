@@ -1133,7 +1133,17 @@ async def get_displacement_dashboard(
     artifact = matches[0]
     if artifact["bytes"] > MAX_DASHBOARD_ARCHIVE_BYTES:
         raise HTTPException(status_code=413, detail="This dashboard bundle is too large to open in the interactive viewer. Download the result package instead.")
-    if not isinstance(google_maps_api_key, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", google_maps_api_key):
+    raw_maps_key = google_maps_api_key if isinstance(google_maps_api_key, str) else ""
+    google_maps_api_key = raw_maps_key.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{20,256}", google_maps_api_key):
+        # Never log the browser key itself; only non-secret shape diagnostics.
+        logger.warning(
+            "Dashboard Google Maps key rejected: present=%s raw_length=%d normalized_length=%d surrounding_whitespace=%s",
+            bool(raw_maps_key),
+            len(raw_maps_key),
+            len(google_maps_api_key),
+            raw_maps_key != google_maps_api_key,
+        )
         raise HTTPException(
             status_code=503,
             detail="Google Maps is not configured for the dashboard. Check VITE_GOOGLE_MAPS_API_KEY in the frontend deployment.",
