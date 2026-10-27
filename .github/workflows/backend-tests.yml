@@ -49,7 +49,7 @@ jobs:
           test -f Backend/supabase/migrations/20261022203034_displacement_jobs.sql
           test -f Backend/supabase/migrations/20261023141449_displacement_active_request_guard.sql
           test -f Backend/supabase/migrations/20261024111404_scientific_request_contract.sql
-          test -f Backend/supabase/migrations/20261027123456_place_target_contract.sql
+          test -f Backend/supabase/migrations/20261027003643_place_target_contract.sql
           test ! -e Backend/migrations/001_processing_jobs.sql
           test ! -e Backend/migrations/002_displacement_jobs.sql
           test ! -e Backend/migrations/003_displacement_active_request_guard.sql
