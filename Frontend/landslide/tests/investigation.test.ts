@@ -19,6 +19,7 @@ describe('AOI WKT fallback parser', () => {
     'POLYGON ((181 27, 85.1 27, 85 27.1, 181 27))',
     'POLYGON ((85 91, 85.1 27, 85 27.1, 85 91))',
     'POLYGON ((85 27, invalid 27, 85 27.1, 85 27))',
+    'POLYGON ((0x10 27, 85.1 27, 85 27.1, 0x10 27))',
     'POLYGON ((85 27, 85.1 27, 85 27.1))',
   ])('rejects unsupported or invalid WKT %s', (wkt) => {
     expect(() => parsePolygonWkt(wkt)).toThrow();
