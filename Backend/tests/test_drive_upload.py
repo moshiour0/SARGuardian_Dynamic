@@ -87,8 +87,26 @@ def test_rejects_tampered_validated_outputs_before_google_drive_is_contacted(tmp
         drive.upload_validated_results(tmp_path, config=drive.DriveConfig("client", "secret", "https://oauth2.googleapis.com/token", "refresh", "13BIAepPGLlYYmscUlNPeMCdtepYshjT4"))
 
 
-def test_rejects_non_web_or_untrusted_google_oauth_configuration() -> None:
-    with pytest.raises(drive.DriveUploadError, match="web credentials"):
+def test_accepts_installed_google_oauth_configuration() -> None:
+    config = drive.load_drive_config({
+        "GOOGLE_DRIVE_OAUTH_CLIENT_JSON": json.dumps({"installed": {
+            "client_id": "client",
+            "client_secret": "secret",
+            "token_uri": "https://oauth2.googleapis.com/token",
+        }}),
+        "GOOGLE_DRIVE_REFRESH_TOKEN": "refresh",
+        "GOOGLE_DRIVE_FOLDER_ID": "13BIAepPGLlYYmscUlNPeMCdtepYshjT4",
+    })
+
+    assert config.client_id == "client"
+    assert config.client_secret == "secret"
+    assert config.token_uri == "https://oauth2.googleapis.com/token"
+    assert config.refresh_token == "refresh"
+    assert config.parent_folder_id == "13BIAepPGLlYYmscUlNPeMCdtepYshjT4"
+
+
+def test_rejects_incomplete_or_untrusted_google_oauth_configuration() -> None:
+    with pytest.raises(drive.DriveUploadError, match="incomplete"):
         drive.load_drive_config({
             "GOOGLE_DRIVE_OAUTH_CLIENT_JSON": json.dumps({"installed": {}}),
             "GOOGLE_DRIVE_REFRESH_TOKEN": "refresh",

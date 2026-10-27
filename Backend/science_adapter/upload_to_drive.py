@@ -65,9 +65,9 @@ def load_drive_config(environ: dict[str, str] | None = None) -> DriveConfig:
         parsed = json.loads(raw_client)
     except json.JSONDecodeError as exc:
         raise DriveUploadError("Google Drive OAuth client JSON is invalid.") from exc
-    client = parsed.get("web") if isinstance(parsed, dict) else None
+    client = (parsed.get("web") or parsed.get("installed")) if isinstance(parsed, dict) else None
     if not isinstance(client, dict):
-        raise DriveUploadError("Google Drive OAuth client JSON must contain web credentials.")
+        raise DriveUploadError("Google Drive OAuth client JSON must contain web or installed credentials.")
     client_id = client.get("client_id")
     client_secret = client.get("client_secret")
     token_uri = client.get("token_uri")
