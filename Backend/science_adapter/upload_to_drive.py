@@ -54,7 +54,16 @@ def _sha256_file(path: Path) -> str:
 
 def load_drive_config(environ: dict[str, str] | None = None) -> DriveConfig:
     values = environ if environ is not None else os.environ
-    raw_client = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON", "").strip()
+    client_file = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON_FILE", "").strip()
+    if client_file:
+        try:
+            raw_client = Path(client_file).read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            raise DriveUploadError("Google Drive OAuth client secret file is unavailable or unreadable.") from exc
+    else:
+        # Keep inline JSON support for GitHub Actions and existing deployments.
+        raw_client = values.get("GOOGLE_DRIVE_OAUTH_CLIENT_JSON", "").strip()
+
     refresh_token = values.get("GOOGLE_DRIVE_REFRESH_TOKEN", "").strip()
     parent_folder_id = values.get("GOOGLE_DRIVE_FOLDER_ID", "").strip()
     if not raw_client or not refresh_token or not parent_folder_id:
@@ -77,7 +86,6 @@ def load_drive_config(environ: dict[str, str] | None = None) -> DriveConfig:
         raise DriveUploadError("Google Drive OAuth client uses an unsupported token endpoint.")
     return DriveConfig(client_id, client_secret, token_uri, refresh_token, parent_folder_id)
 
-
 class DriveClient:
     def __init__(self, config: DriveConfig, session: requests.Session | Any | None = None) -> None:
         self.config = config
@@ -99,7 +107,9 @@ class DriveClient:
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError) as exc:
-            raise DriveUploadError("Could not authenticate to Google Drive result storage.") from exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            suffix = f" (HTTP {status})" if isinstance(status, int) else ""
+            raise DriveUploadError(f"Could not authenticate to Google Drive result storage{suffix}.") from exc
         token = payload.get("access_token") if isinstance(payload, dict) else None
         if not isinstance(token, str) or not token:
             raise DriveUploadError("Google Drive did not return an access token.")
@@ -114,7 +124,9 @@ class DriveClient:
             response.raise_for_status()
             payload = response.json() if response.content else {}
         except (requests.RequestException, ValueError) as exc:
-            raise DriveUploadError("Google Drive result storage request failed.") from exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            suffix = f" (HTTP {status})" if isinstance(status, int) else ""
+            raise DriveUploadError(f"Google Drive result storage request failed{suffix}.") from exc
         if not isinstance(payload, dict):
             raise DriveUploadError("Google Drive returned an invalid result-storage response.")
         return payload
@@ -255,7 +267,9 @@ class DriveClient:
             response.raise_for_status()
             data = response.content
         except requests.RequestException as exc:
-            raise DriveUploadError("Could not retrieve the private result artifact.") from exc
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            suffix = f" (HTTP {status})" if isinstance(status, int) else ""
+            raise DriveUploadError(f"Could not retrieve the private result artifact{suffix}.") from exc
         return {"bytes": len(data), "md5": hashlib.md5(data).hexdigest()}, data  # nosec: Drive integrity field
 
 
