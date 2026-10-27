@@ -786,9 +786,9 @@ def _apply_dashboard_presentation(html: str) -> str:
 
     if "/* SARGuardian responsive science dashboard */" not in html:
         if "</style>" in html:
-            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\\n" + DASHBOARD_PRESENTATION_CSS + "\\n</style>", 1)
+            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style>", 1)
         else:
-            html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\\n" + DASHBOARD_PRESENTATION_CSS + "\\n</style></head>", 1)
+            html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style></head>", 1)
 
     cards_anchor = '<div class="cards" id="summaryCards"></div>'
     if cards_anchor in html and 'id="sgRunReadiness"' not in html:
@@ -812,14 +812,14 @@ def _apply_dashboard_presentation(html: str) -> str:
     if primary_hook in html and "let osmAccessErrors=0" not in html:
         html = html.replace(primary_hook, primary_replacement, 1)
 
-    compare_hook = "map.addControl(new maplibregl.NavigationControl(),'top-right');\\n map.on('load',function(){"
+    compare_hook = "map.addControl(new maplibregl.NavigationControl(),'top-right');\n map.on('load',function(){"
     compare_replacement = (
         "map.addControl(new maplibregl.NavigationControl(),'top-right');"
         "let compareOsmAccessErrors=0;map.on('error',function(event){"
         "if(event&&event.sourceId==='osm'&&event.error&&[401,403,429].includes(event.error.status)){"
         "compareOsmAccessErrors++;if(compareOsmAccessErrors>=2&&map.getLayer('osm')){map.removeLayer('osm');"
         "if(map.getSource('osm'))map.removeSource('osm');}}});"
-        "\\n map.on('load',function(){"
+        "\n map.on('load',function(){"
     )
     if compare_hook in html and "let compareOsmAccessErrors=0" not in html:
         html = html.replace(compare_hook, compare_replacement, 1)
