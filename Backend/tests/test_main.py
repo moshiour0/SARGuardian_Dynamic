@@ -221,7 +221,7 @@ def _dashboard_zip() -> bytes:
             '<!doctype html><html><head><link rel="stylesheet" href="https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.css"></head><body>'
             '<main><div class="cards" id="summaryCards"></div><div class="mapbox"><div id="map"></div></div></main>'
             '<script src="./dashboard-data.js"></script>'
-            '<script type="module">import * as maplibregl from \'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs\'; const tiles = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";</script>'
+            '<script type="module">let maplibregl = null; try { maplibregl = await import(\'https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs\'); } catch (error) { console.warn(\'SARGuardian map library unavailable; science panels remain available.\', error); } const tiles = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";</script>'
             '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a></body></html>',
         )
         archive.writestr("web-dashboard/dashboard-data.js", "window.SARGUARDIAN_DASHBOARD={safe:true};")
