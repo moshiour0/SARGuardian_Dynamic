@@ -1,11 +1,34 @@
 import { describe, expect, it, vi } from 'vitest';
-import { copyPreparation, polygonToWkt, prepareInvestigation, type InvestigationSelection } from '../engine/investigation';
+import { copyPreparation, isPointInsidePolygon, parsePolygonWkt, polygonToWkt, prepareInvestigation, type InvestigationSelection } from '../engine/investigation';
 import { createAoiOverlayController } from '../ui/mapOverlays';
 
 const selection: InvestigationSelection = {
   coordinates: [[85.3, 27.7], [85.301, 27.7], [85.301, 27.701]],
   areaClosed: true, startDate: '2026-10-01', endDate: '2026-10-22', today: '2026-10-23',
 };
+
+describe('AOI WKT fallback parser', () => {
+  it('parses a closed lon/lat WKT ring without duplicating the closing point', () => {
+    expect(parsePolygonWkt('POLYGON ((85.3 27.7, 85.301 27.7, 85.301 27.701, 85.3 27.7))'))
+      .toEqual([[85.3, 27.7], [85.301, 27.7], [85.301, 27.701]]);
+  });
+  it.each([
+    '',
+    'MULTIPOLYGON (((85 27, 85.1 27, 85 27.1, 85 27)))',
+    'POLYGON ((85 27, 85.1 27, 85 27.1, 85 27), (85.01 27.01, 85.02 27.01, 85.01 27.02, 85.01 27.01))',
+    'POLYGON ((181 27, 85.1 27, 85 27.1, 181 27))',
+    'POLYGON ((85 91, 85.1 27, 85 27.1, 85 91))',
+    'POLYGON ((85 27, invalid 27, 85 27.1, 85 27))',
+    'POLYGON ((85 27, 85.1 27, 85 27.1))',
+  ])('rejects unsupported or invalid WKT %s', (wkt) => {
+    expect(() => parsePolygonWkt(wkt)).toThrow();
+  });
+  it('uses longitude/latitude order for point-in-AOI checks', () => {
+    const ring = parsePolygonWkt('POLYGON ((85.3 27.7, 85.301 27.7, 85.301 27.701, 85.3 27.7))');
+    expect(isPointInsidePolygon(85.3002, 27.7002, ring)).toBe(true);
+    expect(isPointInsidePolygon(85.31, 27.71, ring)).toBe(false);
+  });
+});
 
 describe('AOI WKT', () => {
   it('preserves longitude/latitude order and source precision without mutation', () => {
