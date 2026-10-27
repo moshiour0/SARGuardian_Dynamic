@@ -915,11 +915,11 @@ async def get_displacement_dashboard(
     maplibre_url = "https://unpkg.com/maplibre-gl@6.16.0/dist/maplibre-gl.mjs"
     maplibre_import = "import * as maplibregl from '" + maplibre_url + "';"
     safe_import = (
-        "let maplibregl = null;\\n"
-        "try {\\n  maplibregl = await import('" + maplibre_url + "');\\n"
-        "} catch (error) {\\n"
-        "  console.warn('SARGuardian map library unavailable; science panels remain available.', error);\\n"
-        "}\\n"
+        "let maplibregl = null;\n"
+        "try {\n  maplibregl = await import('" + maplibre_url + "');\n"
+        "} catch (error) {\n"
+        "  console.warn('SARGuardian map library unavailable; science panels remain available.', error);\n"
+        "}\n"
     )
     if maplibre_import in html:
         html = html.replace(maplibre_import, safe_import, 1)
