@@ -55,6 +55,16 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
     <h2>Processing status</h2>
     <p><b>Status:</b> {job.state}</p><p><b>Job ID:</b> {job.id}</p>
     <p><b>Stage:</b> {job.stage}</p>
+    <div className="displacement-place-context" aria-label="Selected place and measurement target">
+      <p><b>Selected place:</b> {job.place_name || 'No named place selected'}</p>
+      {Number.isFinite(job.place_latitude) && Number.isFinite(job.place_longitude)
+        && <p><b>Place coordinates:</b> {job.place_latitude!.toFixed(5)}, {job.place_longitude!.toFixed(5)}
+          {job.target_latitude == null || job.target_longitude == null ? ' (context marker only; outside AOI or not selected as an in-AOI target)' : ''}</p>}
+      {Number.isFinite(job.target_latitude) && Number.isFinite(job.target_longitude)
+        ? <p><b>Measurement target:</b> {job.target_latitude!.toFixed(5)}, {job.target_longitude!.toFixed(5)}
+          <small style={{ display: 'block' }}>In-AOI pair sampling point only; not a stable-ground reference and not a hazard finding.</small></p>
+        : <p><b>Measurement target:</b> Not supplied inside the submitted AOI. Target-local metrics and common-reference inversion remain withheld.</p>}
+    </div>
     <p><b>Submitted:</b> {new Date(job.created_at).toLocaleString()}</p>
     <p><b>Age:</b> <time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></p>
     {counts && <div className="catalog-stats displacement-granule-counts" aria-label="Granule counts">
