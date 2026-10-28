@@ -7,9 +7,10 @@ import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/proc
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
 import { DEFAULT_DISPLACEMENT_OPTIONS } from '../../src/api/catalog';
+import { writeDashboardHtml } from '../ui/dashboardPopup';
 
-describe('interactive dashboard rendering', () => {
-  it('offers an inline Processing dashboard action only for a verified successful result', () => {
+describe('dashboard opens in a new same-origin tab', () => {
+  it('offers the new-tab dashboard action only for a verified successful result', () => {
     const job = {
       id: '736bd4e6-8963-43be-a916-bc62336c8557',
       state: 'succeeded',
@@ -19,10 +20,19 @@ describe('interactive dashboard rendering', () => {
       },
     } as never;
     const html = renderToStaticMarkup(<ScientificResults job={job} user={{ getIdToken: vi.fn() } as never} />);
-    expect(html).toContain('Load dashboard in Processing');
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain('window.open');
+    expect(html).toContain('Open interactive dashboard');
+    expect(html).not.toContain('Load dashboard in Processing');
     expect(html).not.toContain('<iframe');
+  });
+});
+
+describe('same-origin dashboard popup helper', () => {
+  it('writes only the verified dashboard HTML into the popup document', () => {
+    const document = { open: vi.fn(), write: vi.fn(), close: vi.fn() };
+    writeDashboardHtml({ document } as unknown as Window, '<!doctype html><html><body>verified</body></html>');
+    expect(document.open).toHaveBeenCalledOnce();
+    expect(document.write).toHaveBeenCalledWith('<!doctype html><html><body>verified</body></html>');
+    expect(document.close).toHaveBeenCalledOnce();
   });
 });
 
