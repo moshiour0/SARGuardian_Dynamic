@@ -68,7 +68,7 @@ jobs:
       - name: Validate the pinned science dashboard workflow
         shell: bash
         env:
-          EXPECTED_DASHBOARD_BUILDER_SHA: 06e4546dbb5929bca618cfe6871c48bee4e1eecf
+          EXPECTED_DASHBOARD_BUILDER_SHA: 7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44
         run: |
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sarguardian-aoi-wkt-dashboard.yml"); puts "SCIENCE_DASHBOARD_WORKFLOW_YAML_PASS"'
