@@ -1,0 +1,117 @@
+name: Known Place Analysis
+
+run-name: Known Place Analysis ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: "Opaque client-visible request identifier"
+        required: true
+        type: string
+      aoi_wkt:
+        description: "Closed single-ring WGS84 polygon WKT (longitude latitude)"
+        required: true
+        type: string
+      start_date:
+        description: "Inclusive UTC start date (YYYY-MM-DD)"
+        required: true
+        type: string
+      end_date:
+        description: "Inclusive UTC end date (YYYY-MM-DD)"
+        required: true
+        type: string
+      hazard_mode:
+        description: "Context only; this engine does not classify a hazard"
+        required: true
+        type: choice
+        options: [landslide, glacier_collapse, ice_rock_avalanche, mixed]
+        default: mixed
+      analysis_mode:
+        description: "Exploratory or retrospective measurement metadata; not an operational alarm"
+        required: true
+        type: choice
+        options: [exploratory, retrospective_validation]
+        default: exploratory
+      polarization:
+        description: "NISAR frequency-A polarization"
+        required: true
+        type: choice
+        options: [HH, HV, VV, VH]
+        default: HH
+      track:
+        description: "ANY or exact three-digit track"
+        required: true
+        type: string
+        default: ANY
+      direction:
+        description: "Flight direction"
+        required: true
+        type: choice
+        options: [ANY, A, D]
+        default: ANY
+      coherence_neighbours:
+        description: "Minimum valid neighbours in the local coherence window"
+        required: true
+        type: choice
+        options: ["1", "5", "10", "15", "20", "25"]
+        default: "1"
+      allowed_release_ids:
+        description: "Optional comma-separated exact release IDs; ambiguous variants are not substituted"
+        required: false
+        type: string
+        default: ""
+      reference_wkt:
+        description: "Optional explicit background/reference polygon WKT"
+        required: false
+        type: string
+        default: ""
+      geometry_height_m:
+        description: "Optional constant ellipsoidal height sensitivity value; blank uses the documented approximation"
+        required: false
+        type: string
+        default: ""
+      consent_marker:
+        description: "Server-set only when the authenticated user explicitly confirms raw downloads"
+        required: false
+        type: string
+        default: ""
+      execute_downloads:
+        description: "False = catalog/series-plan dry run only; true = download and analyze GOFF products"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: known-place-analysis-${{ inputs.request_id }}
+  cancel-in-progress: false
+
+jobs:
+  analyze-known-place:
+    name: Run isolated Known Place scientific analysis
+    uses: moshiour0/SARGuardian-backend/.github/workflows/know-place-aoi-analysis.yml@bd7a59c54ddae7c19fd88896e877c3a530b43d9e
+    with:
+      aoi_wkt: ${{ inputs.aoi_wkt }}
+      start_date: ${{ inputs.start_date }}
+      end_date: ${{ inputs.end_date }}
+      hazard_mode: ${{ inputs.hazard_mode }}
+      analysis_mode: ${{ inputs.analysis_mode }}
+      polarization: ${{ inputs.polarization }}
+      track: ${{ inputs.track }}
+      direction: ${{ inputs.direction }}
+      coherence_neighbours: ${{ inputs.coherence_neighbours }}
+      allowed_release_ids: ${{ inputs.allowed_release_ids }}
+      reference_wkt: ${{ inputs.reference_wkt }}
+      geometry_height_m: ${{ inputs.geometry_height_m }}
+      consent_marker: ${{ inputs.consent_marker }}
+      execute_downloads: ${{ inputs.execute_downloads }}
+    secrets:
+      EARTHDATA_TOKEN: ${{ secrets.EARTHDATA_TOKEN }}
+      EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+      EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+      GOOGLE_DRIVE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_JSON }}
+      GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+      GOOGLE_DRIVE_PARENT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID || secrets.GOOGLE_DRIVE_FOLDER_ID }}

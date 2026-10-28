@@ -142,6 +142,7 @@
 .mode-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.6; }
 .landslide-route-shell .investigation-mode-card .investigate-button { grid-column: 1 / -1; grid-row: auto; width: 100%; align-self: end; margin-top: 1px; white-space: normal; }
 .investigation-mode-card:focus-within { border-color: var(--sg-accent); }
+.landslide-route-shell .investigation-mode-card.archive-mode { grid-column: 1 / -1; }
 .preparation-dates { display: flex; flex-wrap: wrap; gap: 32px; margin-top: 24px; }
 .preparation-dates dt { color: var(--sg-muted); font-size: 12px; }
 .preparation-dates dd { margin: 6px 0 0; }
@@ -286,3 +287,95 @@
 
 /* The route-shell's generic centered error card must not collapse the recovery form. */
 .landslide-route-shell .map-unavailable.map-recovery { top: 96px; bottom: 16px; left: 16px; right: auto; transform: none; width: min(560px, calc(100% - 32px)); max-height: none; overflow: auto; text-align: left; padding: 16px; }
+
+
+/* Dedicated Known Place Analysis form: isolated from the Find Displacements job UI. */
+.landslide-route-shell .known-place-analysis .known-place-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 20px;
+}
+.landslide-route-shell .known-place-analysis .known-place-wide { grid-column: 1 / -1; }
+.landslide-route-shell .known-place-analysis .aoi-job-label {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--sg-text);
+  font-size: 12px;
+  font-weight: 650;
+}
+.landslide-route-shell .known-place-analysis .aoi-job-label input,
+.landslide-route-shell .known-place-analysis .aoi-job-label select,
+.landslide-route-shell .known-place-analysis .aoi-job-label textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--sg-border);
+  border-radius: 8px;
+  background: var(--sg-control);
+  color: var(--sg-text);
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 450;
+}
+.landslide-route-shell .known-place-analysis .aoi-job-label textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.landslide-route-shell .known-place-run-options,
+.landslide-route-shell .known-place-run-status {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px solid var(--sg-border);
+  border-radius: 12px;
+  background: rgba(6, 33, 49, .46);
+}
+.landslide-route-shell .known-place-run-options h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.landslide-route-shell .known-place-run-options > button { margin-top: 8px; }
+.landslide-route-shell .known-place-consent {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--sg-border);
+}
+.landslide-route-shell .known-place-consent label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  color: var(--sg-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.landslide-route-shell .known-place-consent input { margin-top: 4px; accent-color: var(--sg-accent); }
+.landslide-route-shell .known-place-consent b { color: var(--sg-text); }
+.landslide-route-shell .known-place-run-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.landslide-route-shell .known-place-run-heading strong { color: var(--sg-accent); font-size: 16px; }
+.landslide-route-shell .known-place-run-status code { overflow-wrap: anywhere; }
+.landslide-route-shell .known-place-run-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--sg-accent);
+  font-size: 13px;
+  font-weight: 700;
+}
+.landslide-route-shell .known-place-back { margin-top: 18px; }
+@media (max-width: 760px) {
+  .landslide-route-shell .known-place-analysis .known-place-form-grid { grid-template-columns: minmax(0, 1fr); }
+  .landslide-route-shell .known-place-analysis .known-place-wide { grid-column: auto; }
+  .landslide-route-shell .known-place-run-options,
+  .landslide-route-shell .known-place-run-status { padding: 14px; }
+}

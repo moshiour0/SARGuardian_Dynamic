@@ -1,9 +1,14 @@
 export const LANDSLIDE_PATH = '/landslide';
 export const LANDSLIDE_RESULTS_PATH = '/landslide/results';
 export const LANDSLIDE_DISPLACEMENT_PATH = '/landslide/displacements';
+export const LANDSLIDE_KNOWN_PLACE_PATH = '/landslide/known-place-analysis';
 
 export function isLandslideDisplacementRoute(pathname: string): boolean {
   return normalizePathname(pathname) === LANDSLIDE_DISPLACEMENT_PATH;
+}
+
+export function isLandslideKnownPlaceAnalysisRoute(pathname: string): boolean {
+  return normalizePathname(pathname) === LANDSLIDE_KNOWN_PLACE_PATH;
 }
 
 export function normalizePathname(pathname: string): string {

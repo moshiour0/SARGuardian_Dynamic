@@ -20,6 +20,13 @@ from .asf_catalog import ASFAdapterError, ASFAdapterNotConfigured, normalize_pro
 from .auth import get_current_user
 from .config import SettingsError, get_settings, validate_production_settings
 from .jobs import CreateJobRequest, JobResponse, JobState
+from .known_place import (
+    KnownPlaceAnalysisRequest,
+    KnownPlaceAnalysisSubmission,
+    KnownPlaceWorkflowError,
+    dispatch_known_place_analysis,
+    get_known_place_analysis_status,
+)
 from .displacements import (
     ACCOUNT_PROCESSING_OPTIONS,
     PROCESSING_OPTION_DEFAULTS,
@@ -160,6 +167,31 @@ def _validate_request(request: CatalogSearchRequest) -> tuple[float, list[tuple[
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "sarguardian-catalogue-api"}
+
+
+@app.post("/api/known-place-analysis", response_model=KnownPlaceAnalysisSubmission)
+def submit_known_place_analysis(
+    request: KnownPlaceAnalysisRequest,
+    _user: dict = Depends(get_current_user),
+) -> KnownPlaceAnalysisSubmission:
+    """Dispatch the isolated GOFF Know Place engine, independent of Find Displacements."""
+    try:
+        return dispatch_known_place_analysis(get_settings(), request)
+    except KnownPlaceWorkflowError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+@app.get("/api/known-place-analysis/requests/{request_id}", response_model=KnownPlaceAnalysisSubmission)
+def read_known_place_analysis_status(
+    request_id: str,
+    _user: dict = Depends(get_current_user),
+) -> KnownPlaceAnalysisSubmission:
+    """Read the requested GitHub run without exposing the server-side Actions token."""
+    try:
+        return get_known_place_analysis_status(get_settings(), request_id)
+    except KnownPlaceWorkflowError as exc:
+        code = 422 if "Invalid Known Place request ID" in str(exc) else 503
+        raise HTTPException(status_code=code, detail=str(exc)) from None
 
 
 @app.post("/api/catalog/search", response_model=CatalogResponse)
