@@ -7,7 +7,7 @@ import { countCatalogGranules, ELAPSED_TICK_MS, formatElapsed } from '../ui/proc
 import { prepareInvestigation } from '../engine/investigation';
 import { isLandslideDisplacementRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath } from '../../src/routing';
 import { DEFAULT_DISPLACEMENT_OPTIONS } from '../../src/api/catalog';
-import { writeDashboardHtml } from '../ui/dashboardPopup';
+import { waitForDashboardPopupLoad, writeDashboardHtml } from '../ui/dashboardPopup';
 
 describe('dashboard opens in a new same-origin tab', () => {
   it('offers the new-tab dashboard action only for a verified successful result', () => {
@@ -27,6 +27,30 @@ describe('dashboard opens in a new same-origin tab', () => {
 });
 
 describe('same-origin dashboard popup helper', () => {
+  it('waits until the popup has loaded an actual site-origin document', async () => {
+    let readyState = 'loading';
+    let loadHandler: (() => void) | undefined;
+    const origin = 'https://sar-guardian-dynamic-lilac.vercel.app';
+    const document = {
+      get URL() { return `${origin}/`; },
+      get readyState() { return readyState; },
+    };
+    const addEventListener = vi.fn((_type: string, handler: EventListenerOrEventListenerObject) => {
+      loadHandler = typeof handler === 'function' ? () => handler(new Event('load')) : undefined;
+    });
+    const removeEventListener = vi.fn();
+    const popup = { document, addEventListener, removeEventListener } as unknown as Window;
+
+    const ready = waitForDashboardPopupLoad(popup, origin);
+    expect(removeEventListener).not.toHaveBeenCalled();
+    readyState = 'complete';
+    loadHandler?.();
+    await ready;
+
+    expect(removeEventListener).toHaveBeenCalledOnce();
+    expect(removeEventListener).toHaveBeenCalledWith('load', expect.any(Function));
+  });
+
   it('writes only the verified dashboard HTML into the popup document', () => {
     const document = { open: vi.fn(), write: vi.fn(), close: vi.fn() };
     writeDashboardHtml({ document } as unknown as Window, '<!doctype html><html><body>verified</body></html>');
