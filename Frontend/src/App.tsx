@@ -5,7 +5,7 @@ import { listDisplacementJobs } from './api/catalog';
 import { Home } from './pages/Home';
 import { LandslidePage } from '../landslide/ui/LandslidePage';
 import { auth, firebaseConfigured, googleProvider, missingFirebaseConfig } from './firebase';
-import { isLandslideDisplacementRoute, isLandslideResultsRoute, isLandslideRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath, normalizePathname } from './routing';
+import { isLandslideDisplacementRoute, isLandslideKnownPlaceAnalysisRoute, isLandslideResultsRoute, isLandslideRoute, LANDSLIDE_DISPLACEMENT_PATH, LANDSLIDE_KNOWN_PLACE_PATH, LANDSLIDE_PATH, LANDSLIDE_RESULTS_PATH, navigatePath, normalizePathname } from './routing';
 
 function App() {
   const [pathname, setPathname] = useState(() => normalizePathname(window.location.pathname));
@@ -165,7 +165,9 @@ function App() {
         onHome={() => navigateTo('/')}
         isResultsPage={isLandslideResultsRoute(pathname)}
         isDisplacementPage={isLandslideDisplacementRoute(pathname)}
+        isKnownPlaceAnalysisPage={isLandslideKnownPlaceAnalysisRoute(pathname)}
         onDisplacements={() => navigateTo(LANDSLIDE_DISPLACEMENT_PATH)}
+        onKnownPlaceAnalysis={() => navigateTo(LANDSLIDE_KNOWN_PLACE_PATH)}
         onResults={() => navigateTo(LANDSLIDE_RESULTS_PATH)}
         onBackToMap={() => navigateTo(LANDSLIDE_PATH)}
         onDisplacementTaskActivityChange={setHasActiveDisplacementTask}
