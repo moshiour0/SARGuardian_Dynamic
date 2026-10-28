@@ -6,6 +6,7 @@ import type { AoiWindowResponse, CatalogProduct, CatalogResponse, GunwQualityAna
 import { calculateGeodesicAreaKm2, canSubmitCatalogPreflight, validatePolyline } from '../engine/validation';
 import { isPointInsidePolygon, parsePolygonWkt, prepareInvestigation } from '../engine/investigation';
 import { DisplacementPreparation } from './DisplacementPreparation';
+import { KnownPlaceAnalysisPanel } from './KnownPlaceAnalysisPanel';
 import { countCatalogGranules, type GranuleCounts } from './processingStatus';
 import { scheduleErrorToastDismissal } from './errorToast';
 import { createAoiOverlayController } from './mapOverlays';
@@ -1069,7 +1070,7 @@ function loadSubmittedHarmonyJobs(): SubmittedHarmonyLayerJob[] {
   }
 }
 
-export function LandslidePage({ user, onHome, onResults, onDisplacements, onBackToMap, onDisplacementTaskActivityChange, isResultsPage, isDisplacementPage, onSignOut }: {
+export function LandslidePage({ user, onHome, onResults, onDisplacements, onKnownPlaceAnalysis, onBackToMap, onDisplacementTaskActivityChange, isResultsPage, isDisplacementPage, isKnownPlaceAnalysisPage, onSignOut }: {
   user: User;
   onHome: () => void;
   onResults: () => void;
@@ -1077,7 +1078,9 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
   onDisplacementTaskActivityChange: (active: boolean) => void;
   isResultsPage: boolean;
   isDisplacementPage: boolean;
+  isKnownPlaceAnalysisPage: boolean;
   onDisplacements: () => void;
+  onKnownPlaceAnalysis: () => void;
   onSignOut: () => void;
 }) {
   const [initialSessionState] = useState(() => loadLandslideSessionState(user.uid));
@@ -2170,7 +2173,7 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
           onSearchText={setSearchText}
           onMapReady={handleMapReady}
           onPlacesReady={handlePlacesReady}
-          isVisible={!isResultsPage && !isDisplacementPage}
+          isVisible={!isResultsPage && !isDisplacementPage && !isKnownPlaceAnalysisPage}
         />
 
         <form className="map-search glass-float" onSubmit={handleSearch}>
@@ -2273,6 +2276,11 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
                     <h3>Find Displacements</h3>
                     <button className="investigate-button" type="button" disabled={!canSubmitCatalogPreflight(catalogValidation, isCatalogLoading) || isDisplacementSubmitting} onClick={() => void openDisplacements()}>{isDisplacementSubmitting ? 'Starting processing…' : 'Find Displacements'}</button>
                   </article>
+                  <article className="investigation-mode-card known-place-mode">
+                    <span className="mode-icon" aria-hidden="true"><Icon name="map-pin" /></span>
+                    <h3>Known Place Analysis</h3>
+                    <button className="investigate-button" type="button" disabled={!canSubmitCatalogPreflight(catalogValidation, isCatalogLoading)} onClick={onKnownPlaceAnalysis}>Known Place Analysis</button>
+                  </article>
                 </div>
               </section>
             </>
@@ -2295,13 +2303,25 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onBack
 
   return (
     <div className="landslide-route-shell">
-      <div className={`landslide-map-keepalive${isResultsPage || isDisplacementPage ? ' is-hidden' : ''}`} aria-hidden={isResultsPage || isDisplacementPage}>
+      <div className={`landslide-map-keepalive${isResultsPage || isDisplacementPage || isKnownPlaceAnalysisPage ? ' is-hidden' : ''}`} aria-hidden={isResultsPage || isDisplacementPage || isKnownPlaceAnalysisPage}>
         {renderMapPage()}
       </div>
       {isResultsPage && renderResultsPage()}
       {isDisplacementPage && <div className="nisar-results-page">
         {renderWorkspaceHeader('DISPLACEMENT PROCESSING', 'Account processing status')}
         <DisplacementPreparation preparation={catalogValidation} options={processingOptions} granuleCounts={displacementGranuleCounts} onBack={onBackToMap} onTaskActivityChange={onDisplacementTaskActivityChange} user={user} />
+      </div>}
+      {isKnownPlaceAnalysisPage && <div className="nisar-results-page">
+        {renderWorkspaceHeader('KNOWN PLACE ANALYSIS', 'Dedicated GOFF research workflow', 'Back to map', onBackToMap)}
+        <KnownPlaceAnalysisPanel
+          user={user}
+          aoiWkt={catalogValidation.valid ? catalogValidation.payload.aoi_wkt : null}
+          startDate={windowStart}
+          endDate={windowEnd}
+          placeName={location?.name ?? null}
+          aoiAreaKm2={polygonAreaKm2}
+          onBack={onBackToMap}
+        />
       </div>}
     </div>
   );
