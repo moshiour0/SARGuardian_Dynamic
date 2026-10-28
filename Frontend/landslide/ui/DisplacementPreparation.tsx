@@ -63,7 +63,7 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
       {Number.isFinite(job.target_latitude) && Number.isFinite(job.target_longitude)
         ? <p><b>Measurement target:</b> {job.target_latitude!.toFixed(5)}, {job.target_longitude!.toFixed(5)}
           <small style={{ display: 'block' }}>In-AOI pair sampling point only; not a stable-ground reference and not a hazard finding.</small></p>
-        : <p><b>Measurement target:</b> Not supplied inside the submitted AOI. Target-local metrics and common-reference inversion remain withheld.</p>}
+        : <p><b>Measurement target:</b> Not supplied inside the submitted AOI. This is okay for Find Displacements: AOI-wide candidate screening still scans the polygon, and target-free per-pixel GUNW LOS velocity is calculated when enough compatible pairs pass the quality and network gates. Only target-local measurements, local detection floors, and point-based diagnostics remain withheld. Candidate regions and AOI-relative LOS velocity are diagnostics, not confirmed movement or hazard alerts.</p>}
     </div>
     <p><b>Submitted:</b> {new Date(job.created_at).toLocaleString()}</p>
     <p><b>Age:</b> <time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></p>
