@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { User } from 'firebase/auth';
 import type { DisplacementJob } from '../../src/api/catalog';
 import { getInteractiveDashboardHtml } from '../../src/api/catalog';
-import { writeDashboardHtml } from './dashboardPopup';
+import { waitForDashboardPopupLoad, writeDashboardHtml } from './dashboardPopup';
 
 function driveFolderUrl(job: DisplacementJob): string | undefined {
   if (job.state !== 'succeeded' || !job.result_summary) return undefined;
@@ -36,41 +36,44 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
 
   async function openDashboard() {
     setDashboardError('');
-    // Open synchronously from the click so popup blockers do not swallow the
-    // authenticated fetch that follows. The new tab receives only verified HTML.
-    const popup = window.open('about:blank', '_blank');
+    // Open a real HTTPS URL on the AOI workspace origin, not about:blank.
+    // This gives Google's browser-key referrer restrictions a stable site URL.
+    const popupUrl = new URL('/', window.location.origin).toString();
+    const popup = window.open(popupUrl, '_blank');
     if (!popup) {
       setDashboardError('The browser blocked the new tab. Allow pop-ups for SARGuardian and try again.');
       return;
     }
+
     try {
       popup.opener = null;
-      popup.document.title = 'SARGuardian · Interactive dashboard';
-      popup.document.body.textContent = 'Verifying the private result bundle and preparing the interactive dashboard…';
     } catch {
-      // Continue with the navigation below; some browser privacy modes restrict
-      // access to a newly opened blank document.
+      // Continue safely if browser policy prevents updating opener.
     }
 
     setOpening(true);
+    let popupReady = false;
     try {
+      await waitForDashboardPopupLoad(popup, window.location.origin);
+      popupReady = true;
+      popup.document.title = 'SARGuardian · Interactive dashboard';
+      popup.document.body.textContent = 'Verifying the private result bundle and preparing the interactive dashboard…';
       const html = await getInteractiveDashboardHtml(job.id, user);
-      // Keep the popup at the Vercel-origin about:blank document instead of
-      // navigating to a blob: URL. Google Maps HTTP-referrer restrictions then
-      // see the same site origin as the AOI-selection map.
+      // Replacing the fully-loaded app document does not change its real HTTPS URL.
       writeDashboardHtml(popup, html);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not open the interactive dashboard.';
       setDashboardError(message);
-      try {
-        popup.document.open();
-        popup.document.write('<!doctype html><html lang="en"><meta charset="utf-8"><title>SARGuardian dashboard unavailable</title><body style="font:16px system-ui;padding:24px"><h1>Dashboard unavailable</h1><p id="message"></p></body></html>');
-        const messageNode = popup.document.getElementById('message');
-        if (messageNode) messageNode.textContent = message;
-        popup.document.close();
-      } catch {
-        // The in-app status below still reports the failure when the popup is
-        // not writable (for example, if navigation already began).
+      if (popupReady) {
+        try {
+          popup.document.open();
+          popup.document.write('<!doctype html><html lang="en"><meta charset="utf-8"><title>SARGuardian dashboard unavailable</title><body style="font:16px system-ui;padding:24px"><h1>Dashboard unavailable</h1><p id="message"></p></body></html>');
+          const messageNode = popup.document.getElementById('message');
+          if (messageNode) messageNode.textContent = message;
+          popup.document.close();
+        } catch {
+          // The in-app status below still reports the failure when the popup is not writable.
+        }
       }
     } finally {
       setOpening(false);
