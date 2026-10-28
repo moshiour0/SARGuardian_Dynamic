@@ -27,10 +27,6 @@ KNOWN_PLACE_REF = "main"
 KNOWN_PLACE_WORKFLOW_PAGE = (
     f"https://github.com/{KNOWN_PLACE_REPOSITORY}/actions/workflows/{KNOWN_PLACE_WORKFLOW}"
 )
-KNOWN_PLACE_AOI_WORKFLOW_URL = (
-    "https://github.com/moshiour0/SARGuardian-backend/blob/"
-    "7d1482cc0a448531e0aaa0a2508895e45f3ae691/.github/workflows/know-place-aoi-analysis.yml"
-)
 KNOWN_PLACE_MAX_DATE_WINDOW_DAYS = 90
 
 
@@ -120,7 +116,7 @@ class KnownPlaceAnalysisSubmission(BaseModel):
     conclusion: str | None = None
     created_at: str | None = None
     updated_at: str | None = None
-    execute_downloads: bool
+    execute_downloads: bool | None = None
     notice: str
 
 
@@ -259,7 +255,7 @@ def get_known_place_analysis_status(
             conclusion=str(run.get("conclusion")) if run.get("conclusion") is not None else None,
             created_at=str(run.get("created_at")) if run.get("created_at") else None,
             updated_at=str(run.get("updated_at")) if run.get("updated_at") else None,
-            execute_downloads=True if run.get("display_title") == expected_title else False,
+            execute_downloads=None,
             notice="Open the GitHub Actions run for the artifact, scientific gate report, and Drive receipt.",
         )
     return KnownPlaceAnalysisSubmission(
@@ -267,6 +263,6 @@ def get_known_place_analysis_status(
         status="dispatching",
         github_run_id=None,
         github_run_url=KNOWN_PLACE_WORKFLOW_PAGE,
-        execute_downloads=False,
+        execute_downloads=None,
         notice="GitHub accepted the request. The workflow run is still being allocated; refresh status shortly.",
     )
