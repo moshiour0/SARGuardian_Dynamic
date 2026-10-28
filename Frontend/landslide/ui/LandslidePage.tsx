@@ -2277,7 +2277,7 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onKnow
                     <button className="investigate-button" type="button" disabled={!canSubmitCatalogPreflight(catalogValidation, isCatalogLoading) || isDisplacementSubmitting} onClick={() => void openDisplacements()}>{isDisplacementSubmitting ? 'Starting processing…' : 'Find Displacements'}</button>
                   </article>
                   <article className="investigation-mode-card known-place-mode">
-                    <span className="mode-icon" aria-hidden="true"><Icon name="map-pin" /></span>
+                    <span className="mode-icon" aria-hidden="true"><Icon name="locate" /></span>
                     <h3>Known Place Analysis</h3>
                     <button className="investigate-button" type="button" disabled={!canSubmitCatalogPreflight(catalogValidation, isCatalogLoading)} onClick={onKnownPlaceAnalysis}>Known Place Analysis</button>
                   </article>
