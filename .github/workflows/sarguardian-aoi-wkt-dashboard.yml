@@ -381,18 +381,18 @@ jobs:
         with:
           ref: ${{ needs.manifest.outputs.orchestration_sha }}
 
-      - name: Checkout the reviewed movement-measurement-enabled dashboard builder and aggregator
+      - name: Checkout the reviewed target-free AOI screening and per-pixel LOS dashboard builder and aggregator
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: 4b4fee13976019741a115004cde9b9a0d0b76d16
+          ref: 53037524016717a3cc42f6a41789c7c0c9de235d
           path: dashboard-source
 
-      - name: Verify pinned movement-measurement-enabled dashboard builder and aggregation source
+      - name: Verify pinned target-free AOI screening and per-pixel LOS dashboard builder and aggregation source
         shell: bash
         run: |
           set -euo pipefail
-          expected="4b4fee13976019741a115004cde9b9a0d0b76d16"
+          expected="53037524016717a3cc42f6a41789c7c0c9de235d"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "DASHBOARD_BUILDER_SHA=$actual"
