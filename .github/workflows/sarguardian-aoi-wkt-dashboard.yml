@@ -381,18 +381,18 @@ jobs:
         with:
           ref: ${{ needs.manifest.outputs.orchestration_sha }}
 
-      - name: Checkout the reviewed GOFF-enabled dashboard builder and aggregator
+      - name: Checkout the reviewed movement-measurement-enabled dashboard builder and aggregator
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: 52f05a80713c50d8dffedfd6d9aadaaf61413d1a
+          ref: 4b4fee13976019741a115004cde9b9a0d0b76d16
           path: dashboard-source
 
-      - name: Verify pinned GOFF-enabled dashboard builder and aggregation source
+      - name: Verify pinned movement-measurement-enabled dashboard builder and aggregation source
         shell: bash
         run: |
           set -euo pipefail
-          expected="52f05a80713c50d8dffedfd6d9aadaaf61413d1a"
+          expected="4b4fee13976019741a115004cde9b9a0d0b76d16"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "DASHBOARD_BUILDER_SHA=$actual"
