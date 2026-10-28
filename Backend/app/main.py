@@ -842,17 +842,32 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
     window.SARGUARDIAN_GOOGLE_MAPS_ERROR = message;
     resolve({ Map: null, NavigationControl: function() {} });
   }
+  var callbackName = "__sarguardianGoogleMapsLoaded";
   window.gm_authFailure = function() {
     window.SARGUARDIAN_GOOGLE_MAPS_ERROR = "Google Maps rejected the browser API key. Check Maps JavaScript API enablement and HTTP-referrer restrictions.";
   };
+  window.addEventListener("securitypolicyviolation", function(event) {
+    var blocked = String(event.blockedURI || "");
+    if (/googleapis\.com|gstatic\.com|google\.com/i.test(blocked)
+        && !window.SARGUARDIAN_GOOGLE_MAPS_ERROR) {
+      window.SARGUARDIAN_GOOGLE_MAPS_ERROR =
+        "Google Maps was blocked by Content Security Policy (" + event.violatedDirective + ").";
+    }
+  });
   var script = document.createElement("script");
-  script.src = "https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&v=weekly&loading=async";
+  script.src = "https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__&v=weekly&loading=async&callback=" + callbackName;
   script.async = true;
   script.defer = true;
   script.referrerPolicy = "origin";
-  script.onload = function() {
+  // With loading=async, API readiness is signalled by the Google callback,
+  // not by the element's ordinary load event.
+  window[callbackName] = function() {
+    if (window.SARGUARDIAN_GOOGLE_MAPS_ERROR) {
+      unavailable(window.SARGUARDIAN_GOOGLE_MAPS_ERROR);
+      return;
+    }
     if (!window.google || !google.maps || typeof google.maps.Map !== "function") {
-      unavailable("Google Maps JavaScript API did not initialize. Check the key and enabled API.");
+      unavailable("Google Maps callback ran but the Maps JavaScript API did not initialize.");
       return;
     }
     if (complete) return;
@@ -1058,7 +1073,8 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
     resolve({ Map: GoogleMapCompatibilityAdapter, NavigationControl: function() {} });
   };
   script.onerror = function() {
-    unavailable("Google Maps failed to load. Verify VITE_GOOGLE_MAPS_API_KEY, Maps JavaScript API access, and the allowed website referrers.");
+    unavailable(window.SARGUARDIAN_GOOGLE_MAPS_ERROR
+      || "Google Maps script request failed. Check network access, CSP, Maps JavaScript API enablement, API-key restrictions, and allowed website referrers.");
   };
   document.head.appendChild(script);
 });
@@ -1098,11 +1114,11 @@ def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
     html = html.replace('content="strict-origin-when-cross-origin"', 'content="origin"')
     html = html.replace(
         "script-src 'unsafe-inline' https://unpkg.com;",
-        "script-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;",
+        "script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:;",
     )
     html = html.replace(
         "style-src 'unsafe-inline' https://unpkg.com;",
-        "style-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com;",
+        "style-src 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com https://*.googleapis.com https://*.gstatic.com;",
     )
     if "https://maps.googleapis.com/maps/api/js?key=" not in html:
         module_marker = '<script type="module">'
@@ -1110,6 +1126,16 @@ def _apply_google_maps_dashboard(html: str, google_maps_api_key: str) -> str:
             raise ValueError("Interactive dashboard has no JavaScript module entry point.")
         adapter_script = DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT.replace("__GOOGLE_MAPS_API_KEY__", google_maps_api_key)
         html = html.replace(module_marker, adapter_script + "\n" + module_marker, 1)
+    # Surface a safe loader/CSP diagnostic in the dashboard instead of hiding it
+    # behind the original static MapLibre fallback text.
+    old_fallback = "function addFallback(){ $('mapFallback').classList.remove('hidden'); }"
+    new_fallback = (
+        "function addFallback(){var fallback=$('mapFallback');fallback.classList.remove('hidden');"
+        "var detail=fallback.querySelector('p');"
+        "if(detail&&window.SARGUARDIAN_GOOGLE_MAPS_ERROR)"
+        "detail.textContent=window.SARGUARDIAN_GOOGLE_MAPS_ERROR;}"
+    )
+    html = html.replace(old_fallback, new_fallback, 1)
     return html
 
 
@@ -1201,7 +1227,7 @@ async def get_displacement_dashboard(
         '<a href="../index.html" style="color:var(--aqua);padding:9px">Processing report ↗</a>',
         '<span style="color:var(--aqua);padding:9px">Verified research dashboard</span>',
     )
-    csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com; style-src 'unsafe-inline' https://unpkg.com https://maps.googleapis.com https://maps.gstatic.com; img-src data: https: blob:; connect-src https:; worker-src blob:; font-src https: data:;"
+    csp = "default-src 'self' https: data: blob:; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://*.googleapis.com https://*.gstatic.com *.google.com https://*.ggpht.com *.googleusercontent.com blob:; style-src 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com https://*.googleapis.com https://*.gstatic.com; img-src data: https://*.googleapis.com https://*.gstatic.com *.google.com *.googleusercontent.com https: blob:; connect-src https: data: blob:; frame-src *.google.com; worker-src blob:; font-src https://fonts.gstatic.com https://fonts.googleapis.com data:;"
     meta = '<meta http-equiv="Content-Security-Policy" content="' + csp + '">'
     if "<head>" not in html:
         raise HTTPException(status_code=409, detail="Dashboard viewer has no HTML head section.")
