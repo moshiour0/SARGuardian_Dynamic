@@ -274,6 +274,11 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
     assert "Content-Security-Policy" in response.text
     assert "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;" in response.text
     assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyFakeRestrictedKey123456789012345" in response.text
+    assert "&v=weekly&loading=async&callback=__sarguardianGoogleMapsLoaded" in response.text
+    assert "window[callbackName] = function()" in response.text
+    assert "script.onload = function()" not in response.text
+    assert "https://*.googleapis.com" in response.text
+    assert "https://*.gstatic.com" in response.text
     assert "window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER" in response.text
     assert "https://tile.openstreetmap.org/{z}/{x}/{y}.png" not in response.text
     assert "SARGuardian responsive science dashboard" in response.text
@@ -320,6 +325,8 @@ def test_interactive_dashboard_uses_google_maps_key_and_adapter(monkeypatch) -> 
     assert response.status_code == 200
     assert called == [True]
     assert "https://maps.googleapis.com/maps/api/js?key=AIzaSyFakeRestrictedKey123456789012345" in response.text
+    assert "&v=weekly&loading=async&callback=__sarguardianGoogleMapsLoaded" in response.text
+    assert "window[callbackName] = function()" in response.text
     assert "const maplibregl = await window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER;" in response.text
 
 
