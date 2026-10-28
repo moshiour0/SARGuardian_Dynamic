@@ -7,7 +7,7 @@ import { loadLandslideSessionState, persistLandslideSessionState } from '../ui/s
 afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('investigation mode state integration', () => {
-  it('shares saved selection across map, preparation, and return; clearing disables both cards', () => {
+  it('shares saved selection across map, preparation, and return; clearing disables all investigation cards', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-10-23T12:00:00Z'));
     const storage = new Map<string, string>();
@@ -18,13 +18,14 @@ describe('investigation mode state integration', () => {
     const state = loadLandslideSessionState('test-user');
     Object.assign(state, { coordinates: [[85.3, 27.7], [85.301, 27.7], [85.301, 27.701]], areaClosed: true, windowStart: '2026-10-01', windowEnd: '2026-10-22' });
     persistLandslideSessionState('test-user', state);
-    const render = (isDisplacementPage = false) => renderToStaticMarkup(<LandslidePage user={{ uid: 'test-user' } as User} isResultsPage={false} isDisplacementPage={isDisplacementPage} onHome={() => {}} onResults={() => {}} onDisplacements={() => {}} onBackToMap={() => {}} onDisplacementTaskActivityChange={() => {}} onSignOut={() => {}} />);
+    const render = (isDisplacementPage = false, isKnownPlaceAnalysisPage = false) => renderToStaticMarkup(<LandslidePage user={{ uid: 'test-user' } as User} isResultsPage={false} isDisplacementPage={isDisplacementPage} isKnownPlaceAnalysisPage={isKnownPlaceAnalysisPage} onHome={() => {}} onResults={() => {}} onDisplacements={() => {}} onKnownPlaceAnalysis={() => {}} onBackToMap={() => {}} onDisplacementTaskActivityChange={() => {}} onSignOut={() => {}} />);
     const map = render();
     const cards = map.match(/<article class="investigation-mode-card[\s\S]*?<\/article>/g)!;
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(3);
     for (const card of cards) expect(card).not.toContain('disabled=""');
     expect(cards[0]).toContain('Explore NISAR Archive');
     expect(cards[1]).toContain('Find Displacements');
+    expect(cards[2]).toContain('Known Place Analysis');
     expect(cards[0]).not.toContain('Explore available NISAR products for your selected area and time window.');
     expect(cards[1]).not.toContain('Prepare your selected AOI and time window for displacement analysis.');
     expect(map).not.toContain('class="mode-help"');
