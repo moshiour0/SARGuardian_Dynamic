@@ -82,9 +82,12 @@ export function KnownPlaceAnalysisPanel({ user, aoiWkt, startDate, endDate, plac
     try { sessionStorage.setItem(storageKey(user.uid), JSON.stringify(run)); } catch { /* session storage is optional */ }
   }, [run, user.uid]);
 
+  const runRequestId = run?.request_id ?? null;
+  const runStatus = run?.status ?? null;
+
   useEffect(() => {
-    const requestId = run?.request_id;
-    if (!requestId || run?.status === 'completed') return undefined;
+    const requestId = runRequestId;
+    if (!requestId || runStatus === 'completed') return undefined;
     let active = true;
     let timeoutId: number | undefined;
     const poll = async () => {
@@ -107,7 +110,7 @@ export function KnownPlaceAnalysisPanel({ user, aoiWkt, startDate, endDate, plac
       active = false;
       if (timeoutId !== undefined) window.clearTimeout(timeoutId);
     };
-  }, [run?.request_id, run?.status === 'completed', user]);
+  }, [runRequestId, runStatus, user]);
 
   const submit = async (executeDownloads: boolean) => {
     if (!aoiWkt || !startDate || !endDate) {
