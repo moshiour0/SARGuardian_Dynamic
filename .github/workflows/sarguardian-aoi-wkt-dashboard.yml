@@ -381,18 +381,18 @@ jobs:
         with:
           ref: ${{ needs.manifest.outputs.orchestration_sha }}
 
-      - name: Checkout the immutable science dashboard builder and aggregator
+      - name: Checkout the reviewed GOFF-enabled dashboard builder and aggregator
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: e41fd87d396b342efe63692333243557930d41f5
+          ref: 52f05a80713c50d8dffedfd6d9aadaaf61413d1a
           path: dashboard-source
 
-      - name: Verify pinned dashboard builder and aggregation source
+      - name: Verify pinned GOFF-enabled dashboard builder and aggregation source
         shell: bash
         run: |
           set -euo pipefail
-          expected="e41fd87d396b342efe63692333243557930d41f5"
+          expected="52f05a80713c50d8dffedfd6d9aadaaf61413d1a"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "DASHBOARD_BUILDER_SHA=$actual"
