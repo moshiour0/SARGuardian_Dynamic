@@ -1,10 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
-import { isLandslideResultsRoute, isLandslideRoute, navigatePath, normalizePathname } from './routing';
+import { isLandslideKnownPlaceAnalysisRoute, isLandslideResultsRoute, isLandslideRoute, navigatePath, normalizePathname } from './routing';
 
 describe('client-side route recognition', () => {
   it('normalizes query strings and hashes without changing the route', () => {
     expect(normalizePathname('/landslide/results?from=map#summary')).toBe('/landslide/results');
     expect(normalizePathname('')).toBe('/');
+  });
+
+  it('recognizes the separate Known Place Analysis route', () => {
+    expect(isLandslideKnownPlaceAnalysisRoute('/landslide/known-place-analysis')).toBe(true);
+    expect(isLandslideKnownPlaceAnalysisRoute('/landslide/known-place-analysis?run=1')).toBe(true);
+    expect(isLandslideKnownPlaceAnalysisRoute('/landslide/displacements')).toBe(false);
   });
 
   it('recognizes the map and results routes', () => {
