@@ -97,19 +97,33 @@ export function DisplacementPreparation({ preparation, options = DEFAULT_DISPLAC
   const jobId = job?.id;
   const hasActiveJob = Boolean(job && activeStates.has(job.state));
 
+  // This route performs one account-job lookup when it mounts. The parent
+  // workspace can rerender when its global active-task flag changes; its
+  // preparation object is reconstructed on each render. Closing over that
+  // object here would restart the account lookup just as a job completes.
+  // In deployments whose list endpoint omits completed jobs, that second
+  // lookup could clear the successful job and trigger the empty-route redirect.
+  // Keep the latest inputs in a ref, but keep the loader identity stable.
+  const accountLookupContext = useRef({ preparation, options, user });
+  accountLookupContext.current = { preparation, options, user };
+
   const loadAccountJob = useCallback(async () => {
     setJobError('');
+    const lookup = accountLookupContext.current;
     try {
-      const jobs = await listDisplacementJobs(user);
-      setJob((current) => current && activeStates.has(current.state) ? current : chooseAccountJob(jobs, preparation, options));
+      const jobs = await listDisplacementJobs(lookup.user);
+      setJob((current) => current && activeStates.has(current.state)
+        ? current
+        : chooseAccountJob(jobs, lookup.preparation, lookup.options));
     } catch (error) {
       setJobError(error instanceof Error ? error.message : 'Could not load your displacement jobs.');
     } finally {
       setAccountLoaded(true);
     }
-  }, [options, preparation, user]);
+  }, []);
 
-  // Browser refresh and reopening this route only read durable account state.
+  // Browser refresh and reopening this route read durable account state once;
+  // status polling below then follows the selected job by its stable ID.
   useEffect(() => { void loadAccountJob(); }, [loadAccountJob]);
 
   useEffect(() => {
