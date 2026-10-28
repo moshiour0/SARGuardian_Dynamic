@@ -385,14 +385,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: 06e4546dbb5929bca618cfe6871c48bee4e1eecf
+          ref: 7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44
           path: dashboard-source
 
       - name: Verify pinned target-free AOI screening and per-pixel LOS dashboard builder and aggregation source
         shell: bash
         run: |
           set -euo pipefail
-          expected="06e4546dbb5929bca618cfe6871c48bee4e1eecf"
+          expected="7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "DASHBOARD_BUILDER_SHA=$actual"
