@@ -108,8 +108,8 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "--minimum-valid-pixels 6" in worker
     assert "SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}" in dashboard
     assert "def parse_aoi_wkt_ring" in (root / "tools" / "measure_target_from_raster.py").read_text(encoding="utf-8")
-    assert "ref: 52f05a80713c50d8dffedfd6d9aadaaf61413d1a" in dashboard
-    # The reviewed pinned aggregator contains GOFF diagnostics; its implementation lives in the pinned backend commit.
+    assert "ref: 4b4fee13976019741a115004cde9b9a0d0b76d16" in dashboard
+    # The reviewed pinned aggregator contains gated movement measurement reports alongside GOFF diagnostics.
     assert "python dashboard-source/tools/aggregate_aoi_run.py" in dashboard
     assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
     assert "python tools/discover_aoi_products.py" in dashboard
