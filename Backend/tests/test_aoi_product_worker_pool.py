@@ -89,7 +89,11 @@ def test_drive_folder_preflight_serializes_shared_ancestors_and_unique_product_p
     assert sum(name == "Products" for _parent, name in drive.calls) == 1
     assert sum(name == "GUNW" for _parent, name in drive.calls) == 1
     assert sum(name == "GOFF" for _parent, name in drive.calls) == 1
-    assert all(name == "40792194644-1" for _parent, name in drive.calls if name == "40792194644-1")
+    # Product-specific folders are unique, so workers create these themselves;
+    # preflight is intentionally limited to shared ancestors to avoid excess API calls.
+    assert not any(name.startswith("NISAR_L2_") for _parent, name in drive.calls)
+    assert not any(name == "Runs" for _parent, name in drive.calls)
+    assert not any(name == "40792194644-1" for _parent, name in drive.calls)
 
 
 def test_duplicate_manifest_product_is_rejected_before_any_drive_folder_mutation() -> None:
