@@ -189,21 +189,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian
-          ref: 23f79ed58db4c9299c17a691a4ac277f27098ae4
+          ref: 456d64a66c96c6326acba7013d33514df4ae9dc7
           path: science-source
 
       - name: Checkout pinned dashboard retention dependencies for the manifest stage
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: a48e92950c1c96c4f5ad9f31a03de55c416cd0c9
+          ref: ecd125f68ed61c276406f73a1d77eb27979e204e
           path: dashboard-source
 
       - name: Verify manifest-stage retention dependency revision
         shell: bash
         run: |
           set -euo pipefail
-          expected="a48e92950c1c96c4f5ad9f31a03de55c416cd0c9"
+          expected="ecd125f68ed61c276406f73a1d77eb27979e204e"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "MANIFEST_RETENTION_DEPENDENCIES_SHA=$actual"
@@ -417,14 +417,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian-backend
-          ref: a48e92950c1c96c4f5ad9f31a03de55c416cd0c9
+          ref: ecd125f68ed61c276406f73a1d77eb27979e204e
           path: dashboard-source
 
       - name: Verify pinned target-free AOI screening and per-pixel LOS dashboard builder and aggregation source
         shell: bash
         run: |
           set -euo pipefail
-          expected="a48e92950c1c96c4f5ad9f31a03de55c416cd0c9"
+          expected="ecd125f68ed61c276406f73a1d77eb27979e204e"
           actual="$(git -C dashboard-source rev-parse HEAD)"
           test "$actual" = "$expected"
           echo "DASHBOARD_BUILDER_SHA=$actual"
@@ -433,7 +433,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian
-          ref: 23f79ed58db4c9299c17a691a4ac277f27098ae4
+          ref: 456d64a66c96c6326acba7013d33514df4ae9dc7
           path: science-source
 
       - name: Verify dashboard code matches the product manifest revision

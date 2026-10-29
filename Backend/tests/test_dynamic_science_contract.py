@@ -108,7 +108,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "--minimum-valid-pixels 6" in worker
     assert "SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}" in dashboard
     assert "def parse_aoi_wkt_ring" in (root / "tools" / "measure_target_from_raster.py").read_text(encoding="utf-8")
-    assert "ref: a48e92950c1c96c4f5ad9f31a03de55c416cd0c9" in dashboard
+    assert "ref: ecd125f68ed61c276406f73a1d77eb27979e204e" in dashboard
     # The reviewed pinned aggregator contains gated movement measurement reports alongside GOFF diagnostics.
     assert "python dashboard-source/tools/aggregate_aoi_run.py" in dashboard
     assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
@@ -121,7 +121,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "python science-source/src/gunw_reader.py" in worker
     assert "python science-source/src/goff_reader.py" in worker
     assert "--aoi \"$AOI_NAME\"" in worker
-    assert "SCIENCE_COMMIT: 23f79ed58db4c9299c17a691a4ac277f27098ae4" in worker
+    assert "SCIENCE_COMMIT: 456d64a66c96c6326acba7013d33514df4ae9dc7" in worker
     assert 'PYTHONUNBUFFERED: "1"' in worker
     for milestone in (
         "PRODUCT_PROCESSING_START", "PRODUCT_MILESTONE=download_started",
