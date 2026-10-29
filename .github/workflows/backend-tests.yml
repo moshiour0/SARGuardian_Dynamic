@@ -69,6 +69,7 @@ jobs:
         shell: bash
         env:
           EXPECTED_DASHBOARD_BUILDER_SHA: ecd125f68ed61c276406f73a1d77eb27979e204e
+          EXPECTED_SCIENCE_ENGINE_SHA: f038e4dfdb53c8d9793aaaefe173570a1032026c
         run: |
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sarguardian-aoi-wkt-dashboard.yml"); puts "SCIENCE_DASHBOARD_WORKFLOW_YAML_PASS"'
@@ -76,6 +77,18 @@ jobs:
           test "$count" = "4" || { echo "ERROR=EXPECTED_FOUR_VERIFIED_DASHBOARD_PIN_REFERENCES actual=$count"; exit 1; }
           echo "PINNED_BUILDER_REVISION_CONTRACT=PASS"
           echo "SCIENCE_DASHBOARD_BUILDER_PIN_PASS=$EXPECTED_DASHBOARD_BUILDER_SHA"
+          for spec in \
+            ".github/workflows/sarguardian-aoi-wkt-dashboard.yml:2" \
+            ".github/workflows/sarguardian-aoi-product-worker.yml:2" \
+            "Backend/science_adapter/run_displacement.py:1" \
+            "Backend/tests/test_dynamic_science_contract.py:1" \
+            "Backend/tests/test_aoi_product_worker_pool.py:1"; do
+            path="${spec%:*}"
+            expected="${spec##*:}"
+            actual="$(grep -F -o "$EXPECTED_SCIENCE_ENGINE_SHA" "$path" | wc -l | tr -d ' ')"
+            test "$actual" = "$expected" || { echo "ERROR=SCIENCE_PIN_COUNT_MISMATCH path=$path expected=$expected actual=$actual"; exit 1; }
+          done
+          echo "SCIENCE_ENGINE_PIN_CONTRACT_PASS=$EXPECTED_SCIENCE_ENGINE_SHA"
 
       - name: Run backend test suite
         working-directory: Backend
