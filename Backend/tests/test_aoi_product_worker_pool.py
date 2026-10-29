@@ -120,6 +120,20 @@ def test_one_product_per_runner_and_cleanup_stays_gated_on_verified_retention() 
 
 def test_reviewed_dashboard_builder_pin_and_exact_verification_remain() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert workflow.count(BUILDER_SHA) == 2
-    assert 'test "$actual" = "$expected"' in workflow
+    assert workflow.count(BUILDER_SHA) == 4
+    assert workflow.count('test "$actual" = "$expected"') == 2
     assert SCIENCE_ENGINE_SHA in workflow
+
+
+def test_manifest_stage_checks_out_the_pinned_retention_dependencies_before_install() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+    checkout = workflow.index("Checkout pinned dashboard retention dependencies for the manifest stage")
+    verification = workflow.index("Verify manifest-stage retention dependency revision")
+    install = workflow.index("Install pinned discovery and processing dependencies")
+    manifest_job = _job_block(workflow, "manifest")
+    assert checkout < verification < install
+    assert "repository: moshiour0/SARGuardian-backend" in manifest_job
+    assert "ref: " + BUILDER_SHA in manifest_job
+    assert "path: dashboard-source" in manifest_job
+    assert 'git -C dashboard-source rev-parse HEAD' in manifest_job
+    assert 'test "$actual" = "$expected"' in manifest_job
