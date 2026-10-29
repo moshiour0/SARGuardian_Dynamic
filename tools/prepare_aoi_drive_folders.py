@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Prepare all AOI product folders serially before isolated workers run in parallel.
+"""Prepare shared Google Drive ancestors before isolated AOI workers run in parallel.
 
 The product workers still download/process/verify/clean one raw HDF5 each on
-separate ephemeral runners. This preflight only removes a shared Google Drive
-folder-creation race; it never downloads or uploads product data.
+separate ephemeral runners. This preflight creates only shared ancestors (job,
+Products, product family, maturity); each product worker owns its unique
+granule/Runs/version folders. No product data are downloaded or uploaded here.
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ def prepare_drive_folders(
     job_id: str | None,
     version_tag: str,
 ) -> int:
-    """Create the unique product paths before concurrency; return product count."""
+    """Create shared path ancestors serially; return the selected product count."""
     if not isinstance(manifest, dict):
         raise ValueError("AOI_MANIFEST_INVALID")
     products = manifest.get("products")
@@ -55,10 +56,20 @@ def prepare_drive_folders(
             granule_name=granule_name,
             version_tag=version_tag,
         )
-        if not isinstance(names, list) or not names or any(not isinstance(n, str) or not n for n in names):
+        if (
+            not isinstance(names, list)
+            or len(names) < 4
+            or any(not isinstance(n, str) or not n for n in names)
+            or names[-2:] != ["Runs", version_tag]
+        ):
             raise ValueError("DRIVE_FOLDER_PATH_INVALID")
+        # Granule name, Runs, and run-version are unique to one product worker.
+        # Only their ancestors can be shared and raced by concurrent workers.
+        shared_names = names[:-3]
+        if not shared_names:
+            raise ValueError("DRIVE_SHARED_FOLDER_PREFIX_MISSING")
         seen.add(identity)
-        prepared.append((product_id, names))
+        prepared.append((product_id, shared_names))
 
     # Cache each created edge in the folder tree. Shared ancestors are created
     # exactly once here, serially, even when many products use the same family.
@@ -75,8 +86,8 @@ def prepare_drive_folders(
                 folder_ids[key] = folder_id
             parent = folder_id
         print(f"DRIVE_PRODUCT_FOLDER_PREPARED id={product_id}")
-    print(f"DRIVE_PRODUCT_FOLDERS_PREPARED={len(prepared)}")
-    print(f"DRIVE_UNIQUE_FOLDER_PATH_EDGES={len(folder_ids)}")
+    print(f"DRIVE_SHARED_FOLDER_PREFIXES_PREPARED={len(prepared)}")
+    print(f"DRIVE_UNIQUE_SHARED_FOLDER_EDGES={len(folder_ids)}")
     return len(prepared)
 
 
