@@ -15,7 +15,7 @@ from write_no_valid_pixel_stats import write_no_valid_pixel_stats  # noqa: E402
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "sarguardian-aoi-wkt-dashboard.yml"
 WORKER_PATH = ROOT / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml"
 BUILDER_SHA = "ecd125f68ed61c276406f73a1d77eb27979e204e"
-SCIENCE_ENGINE_SHA = "456d64a66c96c6326acba7013d33514df4ae9dc7"
+SCIENCE_ENGINE_SHA = "428ffb96e2889cd83e62b4299989419c278c1baf"
 
 
 def _job_block(workflow: str, job_id: str) -> str:
