@@ -318,7 +318,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'PRODUCT_MILESTONE=science_reader_started product_id=%s family=%s\\n' \
+          printf 'PRODUCT_MILESTONE=science_reader_started product_id=%s family=%s\n' \
             "$PRODUCT_ID" "$PRODUCT_TYPE"
           reader_log="$CURATED_DIR/derived/science-reader.log"
           mkdir -p "$CURATED_DIR/derived"
