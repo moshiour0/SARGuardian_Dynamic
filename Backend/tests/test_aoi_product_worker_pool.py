@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
 from prepare_aoi_drive_folders import prepare_drive_folders  # noqa: E402
+from write_no_valid_pixel_stats import write_no_valid_pixel_stats  # noqa: E402
 
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "sarguardian-aoi-wkt-dashboard.yml"
 WORKER_PATH = ROOT / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml"
@@ -137,3 +138,100 @@ def test_manifest_stage_checks_out_the_pinned_retention_dependencies_before_inst
     assert "path: dashboard-source" in manifest_job
     assert 'git -C dashboard-source rev-parse HEAD' in manifest_job
     assert 'test "$actual" = "$expected"' in manifest_job
+
+
+
+def test_worker_captures_reader_log_and_fails_closed_for_no_valid_pixel_diagnostic() -> None:
+    worker = WORKER_PATH.read_text(encoding="utf-8")
+    start = worker.index("Run the original single-product reader with dynamic WKT-AOI settings")
+    end = worker.index("Measure pair-local noise floor at the selected in-AOI target", start)
+    reader = worker[start:end]
+    assert 'reader_log="$CURATED_DIR/derived/science-reader.log"' in reader
+    assert '2>&1 | tee "$reader_log"' in reader
+    assert 'if [[ ! -s "$stats" ]]' in reader
+    assert "tools/write_no_valid_pixel_stats.py" in reader
+    assert '--reader-log "$reader_log"' in reader
+    assert '--raw-product "$RAW_PATH" --product-type "$PRODUCT_TYPE"' in reader
+    assert reader.index("tools/write_no_valid_pixel_stats.py") < reader.index('test -s "$stats"')
+
+
+def test_no_valid_pixels_diagnostic_row_contains_no_fabricated_measurement(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
+    raw.write_bytes(b"identity-only test fixture")
+    log = tmp_path / "reader.log"
+    log.write_text(
+        "=== product ===\n"
+        "--- HH/layer2 ---\nfinite 1000\ninside AOI 0\nNO VALID PIXELS\n"
+        "--- VV/layer2 ---\nfinite 2000\ninside AOI 0\nNO VALID PIXELS\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "derived" / "stats.csv"
+    result = write_no_valid_pixel_stats(log, out, raw, "GOFF")
+
+    import csv
+    with out.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.DictReader(handle))
+    assert result["status"] == "NO_VALID_PIXELS_AFTER_AOI_AND_QUALITY_GATES"
+    assert result["valid_pixels"] == 0
+    assert result["measurement_reported"] is False
+    assert len(rows) == 1
+    assert rows[0]["file"] == raw.name
+    assert rows[0]["layer"] == "layer2 (no valid pixels)"
+    assert rows[0]["valid_px"] == "0"
+    assert rows[0]["maturity"] == "UNKNOWN"
+    assert rows[0]["science_status"] == "NO_VALID_PIXELS_AFTER_AOI_AND_QUALITY_GATES"
+    assert "median" not in ",".join(rows[0].keys()).lower()
+    assert "velocity" not in ",".join(rows[0].keys()).lower()
+
+
+def test_no_valid_pixels_helper_rejects_mixed_or_ambiguous_reader_layers(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
+    raw.write_bytes(b"test")
+    log = tmp_path / "reader.log"
+    log.write_text(
+        "--- HH/layer2 ---\nNO VALID PIXELS\n"
+        "--- VV/layer2 ---\nrange offset median 23 mm\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="NO_VALID_PIXEL_MARKER_NOT_CONFIRMED"):
+        write_no_valid_pixel_stats(log, tmp_path / "stats.csv", raw, "GOFF")
+    assert not (tmp_path / "stats.csv").exists()
+
+
+def test_no_valid_pixels_helper_refuses_to_overwrite_existing_reader_stats(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
+    raw.write_bytes(b"test")
+    log = tmp_path / "reader.log"
+    log.write_text("--- HH/layer2 ---\nNO VALID PIXELS\n", encoding="utf-8")
+    out = tmp_path / "stats.csv"
+    out.write_text("file,layer\nexisting,layer2\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="REFUSING_TO_REPLACE_EXISTING_READER_STATS"):
+        write_no_valid_pixel_stats(log, out, raw, "GOFF")
+    assert out.read_text(encoding="utf-8").startswith("file,layer")
+
+
+def test_no_valid_pixels_helper_supports_gunw_without_fabricated_metrics(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GUNW_EXAMPLE.h5"
+    raw.write_bytes(b"test")
+    log = tmp_path / "reader.log"
+    log.write_text("--- unwrappedInterferogram/HH ---\nNO VALID PIXELS\n", encoding="utf-8")
+    out = tmp_path / "gunw-stats.csv"
+    result = write_no_valid_pixel_stats(log, out, raw, "GUNW")
+    assert result["valid_pixels"] == 0
+    assert "median" not in out.read_text(encoding="utf-8").lower()
+
+
+
+def test_no_valid_pixels_helper_replaces_only_a_zero_byte_reader_csv(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
+    raw.write_bytes(b"test")
+    log = tmp_path / "reader.log"
+    log.write_text("--- HH/layer2 ---\nNO VALID PIXELS\n", encoding="utf-8")
+    out = tmp_path / "stats.csv"
+    out.touch()
+
+    result = write_no_valid_pixel_stats(log, out, raw, "GOFF")
+
+    assert result["measurement_reported"] is False
+    assert out.stat().st_size > 0
+    assert "NO_VALID_PIXELS_AFTER_AOI_AND_QUALITY_GATES" in out.read_text(encoding="utf-8")

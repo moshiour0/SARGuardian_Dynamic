@@ -320,23 +320,34 @@ jobs:
           set -euo pipefail
           printf 'PRODUCT_MILESTONE=science_reader_started product_id=%s family=%s\n' \
             "$PRODUCT_ID" "$PRODUCT_TYPE"
+          reader_log="$CURATED_DIR/derived/science-reader.log"
+          mkdir -p "$CURATED_DIR/derived"
           if [[ "$PRODUCT_TYPE" == "GUNW" ]]; then
             stats="$CURATED_DIR/derived/gunw_stats_custom.csv"
             export_dir="$CURATED_DIR/derived/export_custom"
             mkdir -p "$export_dir"
             python science-source/src/gunw_reader.py \
-              --read "$RAW_PATH" --aoi "$AOI_NAME" --auto-ref --csv "$stats" --export "$export_dir"
+              --read "$RAW_PATH" --aoi "$AOI_NAME" --auto-ref --csv "$stats" --export "$export_dir" \
+              2>&1 | tee "$reader_log"
           else
             stats="$CURATED_DIR/derived/goff_stats_custom.csv"
             export_dir="$CURATED_DIR/derived/export_goff_custom"
             mkdir -p "$export_dir"
             python science-source/src/goff_reader.py \
-              --read "$RAW_PATH" --aoi "$AOI_NAME" --layer layer2 --csv "$stats" --export "$export_dir"
+              --read "$RAW_PATH" --aoi "$AOI_NAME" --layer layer2 --csv "$stats" --export "$export_dir" \
+              2>&1 | tee "$reader_log"
+          fi
+
+          # No valid AOI pixels is a diagnostic outcome, not a zero-displacement
+          # measurement. Create a row only when every selected reader layer explicitly
+          # emits NO VALID PIXELS; mixed/ambiguous reader failures stay failures.
+          if [[ ! -s "$stats" ]]; then
+            python tools/write_no_valid_pixel_stats.py \
+              --reader-log "$reader_log" --stats-csv "$stats" \
+              --raw-product "$RAW_PATH" --product-type "$PRODUCT_TYPE"
           fi
           test -s "$stats"
           echo "stats_path=$stats" >> "$GITHUB_OUTPUT"
-          printf 'PRODUCT_MILESTONE=science_reader_completed product_id=%s family=%s status=PASS\n' \
-            "$PRODUCT_ID" "$PRODUCT_TYPE"
 
       - name: Measure pair-local noise floor at the selected in-AOI target
         id: local_floor
