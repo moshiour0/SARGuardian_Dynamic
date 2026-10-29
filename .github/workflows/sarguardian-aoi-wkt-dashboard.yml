@@ -189,7 +189,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian
-          ref: 4417671fdefa111cf05e697a76c32d7644232b9f
+          ref: e626f03237c2e3c993e849f1d77394f188a48062
           path: science-source
 
       - name: Checkout pinned dashboard retention dependencies for the manifest stage
@@ -433,7 +433,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian
-          ref: 4417671fdefa111cf05e697a76c32d7644232b9f
+          ref: e626f03237c2e3c993e849f1d77394f188a48062
           path: science-source
 
       - name: Verify dashboard code matches the product manifest revision

@@ -121,7 +121,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "python science-source/src/gunw_reader.py" in worker
     assert "python science-source/src/goff_reader.py" in worker
     assert "--aoi \"$AOI_NAME\"" in worker
-    assert "SCIENCE_COMMIT: 4417671fdefa111cf05e697a76c32d7644232b9f" in worker
+    assert "SCIENCE_COMMIT: e626f03237c2e3c993e849f1d77394f188a48062" in worker
     assert 'PYTHONUNBUFFERED: "1"' in worker
     for milestone in (
         "PRODUCT_PROCESSING_START", "PRODUCT_MILESTONE=download_started",

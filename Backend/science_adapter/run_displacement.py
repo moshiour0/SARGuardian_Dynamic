@@ -27,7 +27,7 @@ from .validation import (ValidationError, create_raster_preview, inventory_hdf5,
                          validate_raster, write_raster_summary)
 
 SCIENCE_REPOSITORY = "moshiour0/SARGuardian"
-SCIENCE_REF = "4417671fdefa111cf05e697a76c32d7644232b9f"
+SCIENCE_REF = "e626f03237c2e3c993e849f1d77394f188a48062"
 PRODUCT_TYPES = frozenset({"GUNW", "GOFF"})
 MAX_DATE_WINDOW_DAYS = 90
 
