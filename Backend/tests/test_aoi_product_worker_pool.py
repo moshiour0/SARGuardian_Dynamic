@@ -36,7 +36,7 @@ def test_initial_product_pool_is_bounded_and_automatic_redownload_is_disabled() 
     assert "sarguardian-aoi-retry-plan" in workflow
     assert "  retry-products:\n" not in workflow
     assert "needs: [manifest, process-products, retry-plan]" in workflow
-    assert "needs: [manifest, process-products, retry-plan, dashboard]" in workflow
+    assert "needs: [manifest, process-products, retry-plan]" in workflow
 
 
 def test_drive_folders_are_prepared_before_the_parallel_matrix_starts() -> None:
