@@ -86,7 +86,7 @@ def prepare_drive_folders(
                 folder_ids[key] = folder_id
             parent = folder_id
         print(f"DRIVE_PRODUCT_FOLDER_PREPARED id={product_id}")
-    print(f"DRIVE_SHARED_FOLDER_PREFIXES_PREPARED={len(prepared)}")
+    print(f"DRIVE_PRODUCTS_WITH_SHARED_ANCESTORS_PREPARED={len(prepared)}")
     print(f"DRIVE_UNIQUE_SHARED_FOLDER_EDGES={len(folder_ids)}")
     return len(prepared)
 
