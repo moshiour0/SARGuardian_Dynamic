@@ -244,6 +244,19 @@ jobs:
             --manifest "$RUNNER_TEMP/sarguardian-aoi/manifest/manifest.json"
           echo "reported=true" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare shared Drive folder hierarchy before parallel product workers
+        env:
+          GOOGLE_DRIVE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_JSON }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_PARENT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID || secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          DRIVE_JOB_ID: ${{ inputs.job_id }}
+          DRIVE_VERSION_TAG: ${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/prepare_aoi_drive_folders.py \
+            --manifest "$RUNNER_TEMP/sarguardian-aoi/manifest/manifest.json"
+
       - name: Publish the selected-product manifest
         uses: actions/upload-artifact@v4
         with:
