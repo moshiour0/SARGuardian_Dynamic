@@ -27,12 +27,16 @@ def _job_block(workflow: str, job_id: str) -> str:
     return match.group(1)
 
 
-def test_initial_and_retry_product_pools_are_bounded_to_fifteen_workers() -> None:
+def test_initial_product_pool_is_bounded_and_automatic_redownload_is_disabled() -> None:
     workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
-    for job_id in ("process-products", "retry-products"):
-        block = _job_block(workflow, job_id)
-        assert re.search(r"(?m)^\s{6}max-parallel:\s*15\s*$", block), job_id
-        assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in block
+    block = _job_block(workflow, "process-products")
+    assert re.search(r"(?m)^\s{6}max-parallel:\s*15\s*$", block), "process-products"
+    assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in block
+    assert "  retry-plan:\n" in workflow
+    assert "sarguardian-aoi-retry-plan" in workflow
+    assert "  retry-products:\n" not in workflow
+    assert "needs: [manifest, process-products, retry-plan]" in workflow
+    assert "needs: [manifest, process-products, retry-plan]" in workflow
 
 
 def test_drive_folders_are_prepared_before_the_parallel_matrix_starts() -> None:

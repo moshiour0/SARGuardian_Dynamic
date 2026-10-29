@@ -114,7 +114,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
     assert "python tools/discover_aoi_products.py" in dashboard
     assert "uses: ./.github/workflows/sarguardian-aoi-product-worker.yml" in dashboard
-    assert dashboard.count("job_id: ${{ inputs.job_id }}") >= 2
+    assert dashboard.count("job_id: ${{ inputs.job_id }}") >= 1
     assert '--job-id "$DRIVE_JOB_ID"' in dashboard
     assert 'DRIVE_JOB_ID: ${{ inputs.job_id }}' in worker
     assert worker.count('--job-id "$DRIVE_JOB_ID"') == 3

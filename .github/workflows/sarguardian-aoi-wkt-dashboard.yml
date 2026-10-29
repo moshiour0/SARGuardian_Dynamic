@@ -309,7 +309,7 @@ jobs:
     secrets: inherit
 
   retry-plan:
-    name: Validate product and post-cleanup receipts
+    name: Audit product and post-cleanup receipts (no automatic re-download)
     needs: [manifest, process-products]
     if: always() && needs.manifest.result == 'success'
     runs-on: ubuntu-24.04
@@ -343,7 +343,7 @@ jobs:
           pattern: sarguardian-cleanup-*
           path: ${{ runner.temp }}/sarguardian-aoi/retry/cleanups
 
-      - name: Identify only missing or invalid product checkpoints
+      - name: Record missing or invalid product checkpoints (diagnostic only)
         id: plan
         shell: bash
         run: |
@@ -363,35 +363,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  retry-products:
-    name: Retry AOI product — ${{ matrix.id }}
-    needs: [manifest, retry-plan]
-    if: needs.retry-plan.result == 'success' && needs.retry-plan.outputs.retry_count != '0'
-    strategy:
-      fail-fast: false
-      # Keep retry pressure bounded to the same isolated-worker capacity.
-      max-parallel: 15
-      matrix:
-        include: ${{ fromJSON(needs.retry-plan.outputs.retry_matrix) }}
-    uses: ./.github/workflows/sarguardian-aoi-product-worker.yml
-    with:
-      aoi_wkt: ${{ inputs.aoi_wkt }}
-      orchestration_sha: ${{ needs.manifest.outputs.orchestration_sha }}
-      product_id: ${{ matrix.id }}
-      granule_name: ${{ matrix.granule_name }}
-      product_type: ${{ matrix.product_type }}
-      maturity: ${{ matrix.maturity }}
-      expected_source_bytes: ${{ matrix.expected_source_bytes }}
-      retention_profile: ${{ inputs.retention_profile }}
-      target_latitude: ${{ inputs.target_latitude }}
-      target_longitude: ${{ inputs.target_longitude }}
-      execution_label: retry-1
-      job_id: ${{ inputs.job_id }}
-    secrets: inherit
+      - name: Record the single-download policy
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Raw download retry policy"
+            echo "- Each product worker attempts one raw-granule download."
+            echo "- Incomplete checkpoints are retained as diagnostic evidence; no second product worker is launched automatically."
+            echo "- Drive upload receipts and verified-cleanup gates remain mandatory."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   dashboard:
     name: Assemble results dashboard and downloadable maps
-    needs: [manifest, process-products, retry-plan, retry-products]
+    needs: [manifest, process-products, retry-plan]
     if: always() && needs.manifest.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
