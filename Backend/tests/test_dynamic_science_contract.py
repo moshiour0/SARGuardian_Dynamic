@@ -9,7 +9,7 @@ import pytest
 
 from science_adapter import catalog
 from science_adapter.geometry import processing_fingerprint, validate_wkt
-from science_adapter.run_displacement import AdapterError, cleanup_after_verified_storage
+from science_adapter.run_displacement import AdapterError, _download_with_retry, cleanup_after_verified_storage
 from science_adapter.validation import enforce_retention_aoi_mask, inventory_hdf5
 
 
@@ -161,3 +161,32 @@ def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Pa
     completed = cleanup_after_verified_storage(work, science_root)
     assert not raw.exists()
     assert completed["cleanup"]["status"] == "PASS"
+
+
+
+def test_raw_product_download_is_single_attempt_and_partial_file_is_removed(tmp_path: Path) -> None:
+    class InterruptedDownload:
+        calls = 0
+
+        def download(self, product_types: list[str], records: list[dict[str, object]]) -> None:
+            self.calls += 1
+            raw.write_bytes(b"partial-product")
+            raise OSError("simulated transient network error")
+
+    raw = tmp_path / "one-granule.h5"
+    acquisition = InterruptedDownload()
+    record = {
+        "productType": "GUNW",
+        "granule": "test-granule",
+        "url": "https://example.invalid/granule.h5",
+        "direction": "ASCENDING",
+        "path": "098",
+        "reference": "2026-01-01",
+        "secondary": "2026-01-13",
+    }
+
+    with pytest.raises(AdapterError, match="one bounded attempt"):
+        _download_with_retry(acquisition, record, raw, tmp_path)
+
+    assert acquisition.calls == 1
+    assert not raw.exists()
