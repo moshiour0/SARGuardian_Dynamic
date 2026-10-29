@@ -63,7 +63,11 @@ def write_no_valid_pixel_stats(
     if product_type not in {"GUNW", "GOFF"}:
         raise ValueError("PRODUCT_TYPE_INVALID")
     if stats_csv.exists():
-        raise ValueError("REFUSING_TO_REPLACE_EXISTING_READER_STATS")
+        if stats_csv.stat().st_size > 0:
+            raise ValueError("REFUSING_TO_REPLACE_EXISTING_READER_STATS")
+        # Readers can create an empty CSV before discovering that no AOI pixels
+        # pass the quality gates. Replace only that zero-byte placeholder.
+        stats_csv.unlink()
     if not reader_log.is_file():
         raise ValueError("READER_LOG_MISSING")
     if raw_product.suffix.lower() != ".h5":
