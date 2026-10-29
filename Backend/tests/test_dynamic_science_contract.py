@@ -9,7 +9,7 @@ import pytest
 
 from science_adapter import catalog
 from science_adapter.geometry import processing_fingerprint, validate_wkt
-from science_adapter.run_displacement import AdapterError, cleanup_after_verified_storage
+from science_adapter.run_displacement import AdapterError, _download_with_retry, cleanup_after_verified_storage
 from science_adapter.validation import enforce_retention_aoi_mask, inventory_hdf5
 
 
@@ -108,7 +108,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "--minimum-valid-pixels 6" in worker
     assert "SITE_TARGET_LATITUDE: ${{ inputs.target_latitude }}" in dashboard
     assert "def parse_aoi_wkt_ring" in (root / "tools" / "measure_target_from_raster.py").read_text(encoding="utf-8")
-    assert "ref: 7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44" in dashboard
+    assert "ref: ecd125f68ed61c276406f73a1d77eb27979e204e" in dashboard
     # The reviewed pinned aggregator contains gated movement measurement reports alongside GOFF diagnostics.
     assert "python dashboard-source/tools/aggregate_aoi_run.py" in dashboard
     assert '"target_measurement_status"' in (root / ".github" / "workflows" / "sarguardian-aoi-product-worker.yml").read_text(encoding="utf-8") or "target_measurement_status" in worker
@@ -121,7 +121,7 @@ def test_account_workflow_calls_the_upstream_dynamic_aoi_streaming_pipeline() ->
     assert "python science-source/src/gunw_reader.py" in worker
     assert "python science-source/src/goff_reader.py" in worker
     assert "--aoi \"$AOI_NAME\"" in worker
-    assert "SCIENCE_COMMIT: 10639a916c9829850775410b3ed7de62e527770d" in worker
+    assert "SCIENCE_COMMIT: 428ffb96e2889cd83e62b4299989419c278c1baf" in worker
     assert 'PYTHONUNBUFFERED: "1"' in worker
     for milestone in (
         "PRODUCT_PROCESSING_START", "PRODUCT_MILESTONE=download_started",
@@ -161,3 +161,32 @@ def test_cleanup_never_deletes_raw_without_complete_remote_receipts(tmp_path: Pa
     completed = cleanup_after_verified_storage(work, science_root)
     assert not raw.exists()
     assert completed["cleanup"]["status"] == "PASS"
+
+
+
+def test_raw_product_download_is_single_attempt_and_partial_file_is_removed(tmp_path: Path) -> None:
+    class InterruptedDownload:
+        calls = 0
+
+        def download(self, product_types: list[str], records: list[dict[str, object]]) -> None:
+            self.calls += 1
+            raw.write_bytes(b"partial-product")
+            raise OSError("simulated transient network error")
+
+    raw = tmp_path / "one-granule.h5"
+    acquisition = InterruptedDownload()
+    record = {
+        "productType": "GUNW",
+        "granule": "test-granule",
+        "url": "https://example.invalid/granule.h5",
+        "direction": "ASCENDING",
+        "path": "098",
+        "reference": "2026-01-01",
+        "secondary": "2026-01-13",
+    }
+
+    with pytest.raises(AdapterError, match="one bounded attempt"):
+        _download_with_retry(acquisition, record, raw, tmp_path)
+
+    assert acquisition.calls == 1
+    assert not raw.exists()

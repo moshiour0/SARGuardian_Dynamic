@@ -27,7 +27,7 @@ from .validation import (ValidationError, create_raster_preview, inventory_hdf5,
                          validate_raster, write_raster_summary)
 
 SCIENCE_REPOSITORY = "moshiour0/SARGuardian"
-SCIENCE_REF = "10639a916c9829850775410b3ed7de62e527770d"
+SCIENCE_REF = "428ffb96e2889cd83e62b4299989419c278c1baf"
 PRODUCT_TYPES = frozenset({"GUNW", "GOFF"})
 MAX_DATE_WINDOW_DAYS = 90
 
@@ -341,27 +341,26 @@ def _download_with_retry(acquisition: Any, record: dict[str, Any], raw: Path, wo
     missing = [key for key in required if record.get(key) in (None, "")]
     if missing:
         raise AdapterError(f"Selected catalog record is missing downloader field(s): {', '.join(missing)}.")
-    max_attempts = 2
-    last_error: Exception | None = None
-    for attempt in range(1, max_attempts + 1):
-        try:
-            if raw.exists():
-                raw.unlink()
-            acquisition.download([record["productType"]], [record])
-            if raw.is_file() and raw.stat().st_size > 0:
-                return
-        except AdapterError:
-            # Authentication/configuration failures cannot improve by
-            # repeating the exact request, so fail immediately.
-            raise
-        except Exception as exc:
-            last_error = exc
-        if attempt < max_attempts:
-            write_stage(work_dir, "download_retry", granule=record["granule"], attempt=attempt,
-                        next_attempt=attempt + 1, error_type=type(last_error).__name__ if last_error else "empty_download")
-    if last_error is not None:
-        raise AdapterError("Download failed after two bounded attempts.") from last_error
-    raise AdapterError("Downloaded file was missing or empty after two bounded attempts.")
+    # One large granule download per worker invocation. Do not repeat multi-GB
+    # transfers after a network failure; the caller records a terminal failure.
+    try:
+        if raw.exists():
+            raw.unlink()
+        acquisition.download([record["productType"]], [record])
+    except AdapterError:
+        if raw.exists():
+            raw.unlink()
+        raise
+    except Exception as exc:
+        if raw.exists():
+            raw.unlink()
+        raise AdapterError("Download failed after one bounded attempt.") from exc
+
+    if raw.is_file() and raw.stat().st_size > 0:
+        return
+    if raw.exists():
+        raw.unlink()
+    raise AdapterError("Downloaded file was missing or empty after one bounded attempt.")
 
 
 def _discovery_progress_summary(discovery: dict[str, Any]) -> dict[str, Any]:
