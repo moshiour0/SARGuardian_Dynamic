@@ -73,7 +73,7 @@ jobs:
           set -euo pipefail
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/sarguardian-aoi-wkt-dashboard.yml"); puts "SCIENCE_DASHBOARD_WORKFLOW_YAML_PASS"'
           count="$(grep -F -o "$EXPECTED_DASHBOARD_BUILDER_SHA" .github/workflows/sarguardian-aoi-wkt-dashboard.yml | wc -l | tr -d ' ')"
-          test "$count" = "2" || { echo "ERROR=EXPECTED_EXACTLY_TWO_VERIFIED_DASHBOARD_PIN_REFERENCES actual=$count"; exit 1; }
+          test "$count" = "4" || { echo "ERROR=EXPECTED_FOUR_VERIFIED_DASHBOARD_PIN_REFERENCES actual=$count"; exit 1; }
           echo "PINNED_BUILDER_REVISION_CONTRACT=PASS"
           echo "SCIENCE_DASHBOARD_BUILDER_PIN_PASS=$EXPECTED_DASHBOARD_BUILDER_SHA"
 

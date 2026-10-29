@@ -192,6 +192,22 @@ jobs:
           ref: 10639a916c9829850775410b3ed7de62e527770d
           path: science-source
 
+      - name: Checkout pinned dashboard retention dependencies for the manifest stage
+        uses: actions/checkout@v4
+        with:
+          repository: moshiour0/SARGuardian-backend
+          ref: 7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44
+          path: dashboard-source
+
+      - name: Verify manifest-stage retention dependency revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="7239cb3ec3a0f9a19edb89b0dae79cc2c25d2e44"
+          actual="$(git -C dashboard-source rev-parse HEAD)"
+          test "$actual" = "$expected"
+          echo "MANIFEST_RETENTION_DEPENDENCIES_SHA=$actual"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -244,6 +260,19 @@ jobs:
             --manifest "$RUNNER_TEMP/sarguardian-aoi/manifest/manifest.json"
           echo "reported=true" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare shared Drive folder hierarchy before parallel product workers
+        env:
+          GOOGLE_DRIVE_OAUTH_CLIENT_JSON: ${{ secrets.GOOGLE_DRIVE_OAUTH_CLIENT_JSON }}
+          GOOGLE_DRIVE_REFRESH_TOKEN: ${{ secrets.GOOGLE_DRIVE_REFRESH_TOKEN }}
+          GOOGLE_DRIVE_PARENT_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_PARENT_FOLDER_ID || secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          DRIVE_JOB_ID: ${{ inputs.job_id }}
+          DRIVE_VERSION_TAG: ${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/prepare_aoi_drive_folders.py \
+            --manifest "$RUNNER_TEMP/sarguardian-aoi/manifest/manifest.json"
+
       - name: Publish the selected-product manifest
         uses: actions/upload-artifact@v4
         with:
@@ -258,7 +287,9 @@ jobs:
     if: needs.manifest.result == 'success'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      # Each matrix item owns an isolated runner and one raw HDF5 product.
+      # Refill free slots immediately; do not stage 15 multi-GB files on one disk.
+      max-parallel: 15
       matrix:
         include: ${{ fromJSON(needs.manifest.outputs.matrix) }}
     uses: ./.github/workflows/sarguardian-aoi-product-worker.yml
@@ -338,7 +369,8 @@ jobs:
     if: needs.retry-plan.result == 'success' && needs.retry-plan.outputs.retry_count != '0'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      # Keep retry pressure bounded to the same isolated-worker capacity.
+      max-parallel: 15
       matrix:
         include: ${{ fromJSON(needs.retry-plan.outputs.retry_matrix) }}
     uses: ./.github/workflows/sarguardian-aoi-product-worker.yml
@@ -474,6 +506,7 @@ jobs:
           print("")
           print("- **Dashboard status:** "+str(x.get("status")))
           print("- **Products structurally validated:** {}/{}".format(x.get("products_validated"),x.get("products_expected")))
+          print("- **Product-worker concurrency cap:** 15 isolated per-product runners; each downloads, processes, verifies remote retention, and cleans up its own product.")
           print("- **GUNW / GOFF:** {} / {}".format(x.get("gunw_count"),x.get("goff_count")))
           print("- **Products with valid pixels:** "+str(x.get("products_with_science_pixels")))
           print("- **AOI WKT SHA-256:** `"+str(x.get("aoi_wkt_sha256"))+"`")
