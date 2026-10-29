@@ -160,9 +160,9 @@ def test_no_valid_pixels_diagnostic_row_contains_no_fabricated_measurement(tmp_p
     raw.write_bytes(b"identity-only test fixture")
     log = tmp_path / "reader.log"
     log.write_text(
-        "=== product ===\\n"
-        "--- HH/layer2 ---\\nfinite 1000\\ninside AOI 0\\nNO VALID PIXELS\\n"
-        "--- VV/layer2 ---\\nfinite 2000\\ninside AOI 0\\nNO VALID PIXELS\\n",
+        "=== product ===\n"
+        "--- HH/layer2 ---\nfinite 1000\ninside AOI 0\nNO VALID PIXELS\n"
+        "--- VV/layer2 ---\nfinite 2000\ninside AOI 0\nNO VALID PIXELS\n",
         encoding="utf-8",
     )
     out = tmp_path / "derived" / "stats.csv"
@@ -189,8 +189,8 @@ def test_no_valid_pixels_helper_rejects_mixed_or_ambiguous_reader_layers(tmp_pat
     raw.write_bytes(b"test")
     log = tmp_path / "reader.log"
     log.write_text(
-        "--- HH/layer2 ---\\nNO VALID PIXELS\\n"
-        "--- VV/layer2 ---\\nrange offset median 23 mm\\n",
+        "--- HH/layer2 ---\nNO VALID PIXELS\n"
+        "--- VV/layer2 ---\nrange offset median 23 mm\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="NO_VALID_PIXEL_MARKER_NOT_CONFIRMED"):
@@ -202,9 +202,9 @@ def test_no_valid_pixels_helper_refuses_to_overwrite_existing_reader_stats(tmp_p
     raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
     raw.write_bytes(b"test")
     log = tmp_path / "reader.log"
-    log.write_text("--- HH/layer2 ---\\nNO VALID PIXELS\\n", encoding="utf-8")
+    log.write_text("--- HH/layer2 ---\nNO VALID PIXELS\n", encoding="utf-8")
     out = tmp_path / "stats.csv"
-    out.write_text("file,layer\\nexisting,layer2\\n", encoding="utf-8")
+    out.write_text("file,layer\nexisting,layer2\n", encoding="utf-8")
     with pytest.raises(ValueError, match="REFUSING_TO_REPLACE_EXISTING_READER_STATS"):
         write_no_valid_pixel_stats(log, out, raw, "GOFF")
     assert out.read_text(encoding="utf-8").startswith("file,layer")
@@ -214,7 +214,7 @@ def test_no_valid_pixels_helper_supports_gunw_without_fabricated_metrics(tmp_pat
     raw = tmp_path / "NISAR_L2_PR_GUNW_EXAMPLE.h5"
     raw.write_bytes(b"test")
     log = tmp_path / "reader.log"
-    log.write_text("--- unwrappedInterferogram/HH ---\\nNO VALID PIXELS\\n", encoding="utf-8")
+    log.write_text("--- unwrappedInterferogram/HH ---\nNO VALID PIXELS\n", encoding="utf-8")
     out = tmp_path / "gunw-stats.csv"
     result = write_no_valid_pixel_stats(log, out, raw, "GUNW")
     assert result["valid_pixels"] == 0
