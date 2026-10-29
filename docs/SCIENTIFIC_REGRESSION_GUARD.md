@@ -2,8 +2,8 @@
 
 This repository's Find Displacements workflow must follow the canonical, versioned scientific acceptance contract:
 
-- Canonical guard: [`docs/SCIENTIFIC_REGRESSION_GUARD.md`](https://github.com/moshiour0/SARGuardian/blob/428ffb96e2889cd83e62b4299989419c278c1baf/docs/SCIENTIFIC_REGRESSION_GUARD.md)
-- Immutable science engine revision audited with the guard: `428ffb96e2889cd83e62b4299989419c278c1baf`
+- Canonical guard: [`docs/SCIENTIFIC_REGRESSION_GUARD.md`](https://github.com/moshiour0/SARGuardian/blob/f038e4dfdb53c8d9793aaaefe173570a1032026c/docs/SCIENTIFIC_REGRESSION_GUARD.md)
+- Immutable science engine revision audited with the guard: `f038e4dfdb53c8d9793aaaefe173570a1032026c`
 - Backend dashboard/aggregator builder used by this feature branch: `ecd125f68ed61c276406f73a1d77eb27979e204e`
 
 **Every AI, contributor, or reviewer must read the canonical guard before changing this repository's workflow, frontend integration, API dispatch, data-retention contract, or scientific presentation.** Do not paste a stale copy of the guard into this repository.
