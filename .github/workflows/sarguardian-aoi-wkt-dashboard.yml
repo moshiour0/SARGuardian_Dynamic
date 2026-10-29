@@ -258,7 +258,9 @@ jobs:
     if: needs.manifest.result == 'success'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      # Each matrix item owns an isolated runner and one raw HDF5 product.
+      # Refill free slots immediately; do not stage 15 multi-GB files on one disk.
+      max-parallel: 15
       matrix:
         include: ${{ fromJSON(needs.manifest.outputs.matrix) }}
     uses: ./.github/workflows/sarguardian-aoi-product-worker.yml
@@ -338,7 +340,8 @@ jobs:
     if: needs.retry-plan.result == 'success' && needs.retry-plan.outputs.retry_count != '0'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      # Keep retry pressure bounded to the same isolated-worker capacity.
+      max-parallel: 15
       matrix:
         include: ${{ fromJSON(needs.retry-plan.outputs.retry_matrix) }}
     uses: ./.github/workflows/sarguardian-aoi-product-worker.yml
@@ -474,6 +477,7 @@ jobs:
           print("")
           print("- **Dashboard status:** "+str(x.get("status")))
           print("- **Products structurally validated:** {}/{}".format(x.get("products_validated"),x.get("products_expected")))
+          print("- **Product-worker concurrency cap:** 15 isolated per-product runners; each downloads, processes, verifies remote retention, and cleans up its own product.")
           print("- **GUNW / GOFF:** {} / {}".format(x.get("gunw_count"),x.get("goff_count")))
           print("- **Products with valid pixels:** "+str(x.get("products_with_science_pixels")))
           print("- **AOI WKT SHA-256:** `"+str(x.get("aoi_wkt_sha256"))+"`")
