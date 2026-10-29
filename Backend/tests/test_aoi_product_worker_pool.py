@@ -219,3 +219,19 @@ def test_no_valid_pixels_helper_supports_gunw_without_fabricated_metrics(tmp_pat
     result = write_no_valid_pixel_stats(log, out, raw, "GUNW")
     assert result["valid_pixels"] == 0
     assert "median" not in out.read_text(encoding="utf-8").lower()
+
+
+
+def test_no_valid_pixels_helper_replaces_only_a_zero_byte_reader_csv(tmp_path: Path) -> None:
+    raw = tmp_path / "NISAR_L2_PR_GOFF_EXAMPLE.h5"
+    raw.write_bytes(b"test")
+    log = tmp_path / "reader.log"
+    log.write_text("--- HH/layer2 ---\nNO VALID PIXELS\n", encoding="utf-8")
+    out = tmp_path / "stats.csv"
+    out.touch()
+
+    result = write_no_valid_pixel_stats(log, out, raw, "GOFF")
+
+    assert result["measurement_reported"] is False
+    assert out.stat().st_size > 0
+    assert "NO_VALID_PIXELS_AFTER_AOI_AND_QUALITY_GATES" in out.read_text(encoding="utf-8")
