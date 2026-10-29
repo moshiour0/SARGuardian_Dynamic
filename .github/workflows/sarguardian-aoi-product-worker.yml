@@ -62,7 +62,7 @@ jobs:
       SARGUARDIAN_AOI_WKT: ${{ inputs.aoi_wkt }}
       AOI_ORCHESTRATION_SHA: ${{ inputs.orchestration_sha }}
       AOI_ORCHESTRATION_BRANCH: main
-      SCIENCE_COMMIT: 428ffb96e2889cd83e62b4299989419c278c1baf
+      SCIENCE_COMMIT: f038e4dfdb53c8d9793aaaefe173570a1032026c
       RETENTION_PROFILE: ${{ inputs.retention_profile }}
       PRODUCT_EXECUTION_LABEL: ${{ inputs.execution_label }}
       DRIVE_JOB_ID: ${{ inputs.job_id }}
@@ -92,7 +92,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: moshiour0/SARGuardian
-          ref: 428ffb96e2889cd83e62b4299989419c278c1baf
+          ref: f038e4dfdb53c8d9793aaaefe173570a1032026c
           path: science-source
 
       - name: Verify pinned science revision
