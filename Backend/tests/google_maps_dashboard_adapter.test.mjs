@@ -114,15 +114,6 @@ FakeInfoWindow.instances = [];
 const map = new compatibility.Map({ container: "map", center: [85.3, 27.7], zoom: 6 });
 assert.equal(map.loaded(), true);
 
-const clicked = [];
-map.on("click", "aoi-wide-candidate-fill", (event) => {
-  clicked.push(event);
-  new compatibility.Popup({ maxWidth: 320 })
-    .setLngLat(event.lngLat)
-    .setHTML("<strong>candidate details</strong>")
-    .addTo(map);
-});
-
 const featureCollection = {
   type: "FeatureCollection",
   features: [
@@ -171,6 +162,15 @@ map.addLayer({
 });
 
 const layer = map.getLayer("aoi-wide-candidate-fill");
+const clicked = [];
+map.on("click", "aoi-wide-candidate-fill", (event) => {
+  clicked.push(event);
+  new compatibility.Popup({ maxWidth: 320 })
+    .setLngLat(event.lngLat)
+    .setHTML("<strong>candidate details</strong>")
+    .addTo(map);
+});
+
 assert.equal(layer.overlays.length, 3, "all polygon features and both MultiPolygon components must be rendered");
 assert.deepEqual(FakePolygon.instances.map((item) => item.options.fillColor), ["#7dd3fc", "#ff6b6b", "#ff6b6b"]);
 assert.ok(FakePolygon.instances.every((item) => item.options.clickable === true));
