@@ -787,22 +787,38 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
     var single=features.filter(function(f){return f&&f.properties&&f.properties.status==="SINGLE_PAIR_CANDIDATE_UNCONFIRMED";});
     var repeatedGoff=repeated.filter(function(f){return f.properties.product_type==="GOFF";}).length;
     var repeatedGunw=repeated.filter(function(f){return f.properties.product_type==="GUNW";}).length;
+    var singleGoff=single.filter(function(f){return f.properties.product_type==="GOFF";}).length;
+    var singleGunw=single.filter(function(f){return f.properties.product_type==="GUNW";}).length;
     var valid=obs.filter(function(p){return Number(p&&p.valid_pixels)>0;}).length;
     var legacy=manifest.aoi_wide_displacement_screen||{};
     var legacyCount=Number(legacy.candidate_count||0);
     var pixel=manifest.aoi_relative_pixel_timeseries||{};
     var networks=Array.isArray(pixel.networks)?pixel.networks:[];
+    var pixelStack=manifest.pixel_stack_diagnostic||{};
+    var noCompatibleStack=pixelStack.status==="WITHHELD_NO_COMPATIBLE_REPEATED_NETWORK";
     var context=manifest.site_context||{},target=context.measurement_target||{};
     var targetMeasured=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_measurement_status==="MEASURED"&&(m.target_local_los_median_mm!=null||m.target_local_range_median_mm!=null||m.target_local_azimuth_median_mm!=null);}).length;
     var targetFloors=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_local_floor_status==="MEASURED"&&m.target_local_floor_mm_day!=null;}).length;
+    var targetRecorded=target.status==="IN_AOI_TARGET_CAPTURED";
+    var targetNote=targetRecorded
+      ?"A point was recorded, but only pairs marked MEASURED count. Missing local values are not zero motion."
+      :"No explicit measurement point was supplied. That is expected for Find Displacements: it scans the whole AOI without a target. Target-local values are optional; missing values do not mean zero motion.";
     var validation=manifest.validation||{};
+    var pixelTimeSeriesValue=noCompatibleStack
+      ?"NOT TESTABLE — no compatible repeated GUNW network"
+      :String(pixel.status||"NOT REPORTED");
+    var pixelTimeSeriesNote=noCompatibleStack
+      ?String(pixelStack.interpretation||"The retained GUNW pairs did not form a compatible repeated measurement network. This is NOT TESTABLE, not NO DETECTION.")
+      :(pixel.status==="WITHHELD_SCIENCE_GATES"
+        ?"The "+networks.length+" strict geometry/sub-swath groups did not pass the connected/redundant network, common-pixel and reference-support gates. This is a data-network limitation, not a missing target point."
+        :String(pixel.reason||"Read the network gate and reference limitations before interpreting any derived velocity."));
     var rows=[
       {label:"Observation coverage",value:valid+" of "+obs.length+" products had usable pixels",note:(obs.length-valid)+" products had no usable raster pixels for this AOI. No usable pixels does not mean zero movement.",status:valid>0?"PARTLY AVAILABLE":"NOT AVAILABLE"},
-      {label:"Repeated anomaly fragments",value:repeated.length+" fragments",note:repeatedGoff+" GOFF offset fragments and "+repeatedGunw+" GUNW LOS fragments recur in compatible pairs. These are image-space fragments, not confirmed moving slopes or unique sites.",status:repeated.length?"CANDIDATES ONLY":"NONE AT SCREEN THRESHOLD"},
-      {label:"Single-pair anomaly fragments",value:single.length+" fragments",note:"These appeared in only one acquisition pair. They have weaker temporal support and need separate review.",status:single.length?"UNCONFIRMED":"NONE REPORTED"},
-      {label:"Separate legacy GOFF screen",value:legacyCount+" candidate regions",note:"This is a different, older GOFF-only method. It is not the same count as the "+features.length+" newer fragments and must not be added to them.",status:"SEPARATE RESULT"},
-      {label:"AOI-wide GUNW time-series",value:String(pixel.status||"NOT REPORTED"),note:pixel.status==="WITHHELD_SCIENCE_GATES"?"The "+networks.length+" strict geometry/sub-swath groups did not have enough repeated pairs, common pixels or reference support for a velocity map. This is a network-data limitation, not a missing target point.":"Read the network gate and reference limitations before interpreting any derived velocity.",status:"SCIENCE GATES"},
-      {label:"Optional target-point measurements",value:targetMeasured+" of "+obs.length+" pairs measured · "+targetFloors+" local floors",note:"No explicit measurement point was supplied. This is normal for Find Displacements: the AOI scan does not need a target. Not measured is not the same as zero motion.",status:target.status==="IN_AOI_TARGET_CAPTURED"?"TARGET RECORDED":"NO POINT PROVIDED"},
+      {label:"Repeated anomaly fragments",value:repeated.length+" fragments",note:repeatedGoff+" GOFF offset fragments and "+repeatedGunw+" GUNW pairwise LOS fragments (not cumulative motion) recur in compatible pairs. These records are not unique places or confirmed moving slopes.",status:repeated.length?"CANDIDATES ONLY":"NONE AT SCREEN THRESHOLD"},
+      {label:"Single-pair anomaly fragments",value:single.length+" fragments",note:singleGoff+" GOFF and "+singleGunw+" GUNW records appeared in only one acquisition pair. They have weaker temporal support and are unconfirmed review leads.",status:single.length?"UNCONFIRMED":"NONE REPORTED"},
+      {label:"Separate legacy GOFF screen",value:legacyCount+" candidate regions",note:"This is a different GOFF-only method. It is not the same count as the "+features.length+" extended metric records and must not be added to them. Neither count is a count of unique landslides.",status:"SEPARATE RESULT"},
+      {label:"AOI-wide GUNW time-series",value:pixelTimeSeriesValue,note:pixelTimeSeriesNote,status:noCompatibleStack?"NOT TESTABLE":"SCIENCE GATES"},
+      {label:"Optional target-point measurements",value:targetMeasured+" of "+obs.length+" pairs measured · "+targetFloors+" local floors",note:targetNote,status:targetRecorded?"TARGET RECORDED":"NO POINT PROVIDED"},
       {label:"Processing checks",value:(validation.products_validated||0)+" of "+(validation.products_expected||obs.length)+" products passed",note:"Structural and provenance checks only. Independent geophysical validation: "+String(validation.independent_geophysical_validation||"NOT REPORTED")+". A processing PASS is not proof of actual ground movement.",status:String(validation.processing_status||"NOT REPORTED")}
     ];
     root.replaceChildren();
