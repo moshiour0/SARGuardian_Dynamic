@@ -294,7 +294,7 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
     assert "Structural and provenance checks only." in response.text
     assert "GUNW pairwise LOS fragments" in response.text
     assert "GOFF offset fragments" in response.text
-    assert "no compatible repeated GUNW network" in response.text.lower()
+    assert "no compatible repeated gunw network" in response.text.lower()
     assert "Target-local values are optional." in response.text
     assert "private-drive-file-id" not in response.text
     assert "Processing report ↗" not in response.text
