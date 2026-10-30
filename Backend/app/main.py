@@ -802,7 +802,7 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
     var targetRecorded=target.status==="IN_AOI_TARGET_CAPTURED";
     var targetNote=targetRecorded
       ?"A point was recorded, but only pairs marked MEASURED count. Missing local values are not zero motion."
-      :"No explicit measurement point was supplied. That is expected for Find Displacements: it scans the whole AOI without a target. Target-local values are optional; missing values do not mean zero motion.";
+      :"No explicit measurement point was supplied. That is expected for Find Displacements: it scans the whole AOI without a target. Target-local values are optional. Not measured is not the same as zero motion.";
     var validation=manifest.validation||{};
     var pixelTimeSeriesValue=noCompatibleStack
       ?"NOT TESTABLE — no compatible repeated GUNW network"
