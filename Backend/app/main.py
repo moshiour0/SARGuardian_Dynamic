@@ -905,24 +905,69 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
     if (complete) return;
     complete = true;
 
-    function geometryFor(data) {
-      if (!data) return null;
-      if (data.type === "Feature") return data.geometry || null;
-      if (data.type === "FeatureCollection") return data.features && data.features[0] ? data.features[0].geometry : null;
-      return data;
+    function featuresFor(data) {
+      if (!data) return [];
+      if (data.type === "FeatureCollection") {
+        return Array.isArray(data.features)
+          ? data.features.filter(function(feature) { return feature && feature.geometry; })
+          : [];
+      }
+      if (data.type === "Feature") return data.geometry ? [data] : [];
+      return [{ type: "Feature", properties: {}, geometry: data }];
     }
-    function polygonPaths(geometry) {
+    function geometryTypeFor(geometry) {
+      if (!geometry) return "";
+      return geometry.type === "MultiPolygon" ? "Polygon" : geometry.type;
+    }
+    function polygonPathGroups(geometry) {
       if (!geometry) return [];
-      var groups = [];
-      if (geometry.type === "Polygon") groups = geometry.coordinates || [];
-      else if (geometry.type === "MultiPolygon") groups = (geometry.coordinates || []).flat();
-      return groups.map(function(ring) {
-        return ring.map(function(coord) { return { lat: Number(coord[1]), lng: Number(coord[0]) }; });
-      }).filter(function(path) { return path.length >= 3; });
+      var polygons = geometry.type === "Polygon"
+        ? [geometry.coordinates || []]
+        : geometry.type === "MultiPolygon" ? (geometry.coordinates || []) : [];
+      return polygons.map(function(rings) {
+        return rings.map(function(ring) {
+          return ring.map(function(coord) {
+            return { lat: Number(coord[1]), lng: Number(coord[0]) };
+          }).filter(function(point) {
+            return Number.isFinite(point.lat) && Number.isFinite(point.lng);
+          });
+        }).filter(function(path) { return path.length >= 3; });
+      }).filter(function(paths) { return paths.length > 0; });
     }
     function pointFor(geometry) {
       if (!geometry || geometry.type !== "Point" || !Array.isArray(geometry.coordinates)) return null;
       return { lat: Number(geometry.coordinates[1]), lng: Number(geometry.coordinates[0]) };
+    }
+    function valueFor(expression, feature) {
+      if (!Array.isArray(expression)) return expression;
+      var operator = expression[0];
+      if (operator === "get") return (feature.properties || {})[expression[1]];
+      if (operator === "geometry-type") return geometryTypeFor(feature.geometry);
+      if (operator === "==") return valueFor(expression[1], feature) === valueFor(expression[2], feature);
+      if (operator === "!=") return valueFor(expression[1], feature) !== valueFor(expression[2], feature);
+      if (operator === "!") return !valueFor(expression[1], feature);
+      if (operator === "all") return expression.slice(1).every(function(item) { return Boolean(valueFor(item, feature)); });
+      if (operator === "any") return expression.slice(1).some(function(item) { return Boolean(valueFor(item, feature)); });
+      if (operator === "case") {
+        for (var index = 1; index < expression.length - 1; index += 2) {
+          if (Boolean(valueFor(expression[index], feature))) return valueFor(expression[index + 1], feature);
+        }
+        return valueFor(expression[expression.length - 1], feature);
+      }
+      return undefined;
+    }
+    function matchesFilter(filter, feature) {
+      if (!Array.isArray(filter) || !filter.length) return true;
+      if (filter[0] === "==") return valueFor(filter[1], feature) === valueFor(filter[2], feature);
+      if (filter[0] === "!=") return valueFor(filter[1], feature) !== valueFor(filter[2], feature);
+      if (filter[0] === "all") return filter.slice(1).every(function(item) { return matchesFilter(item, feature); });
+      if (filter[0] === "any") return filter.slice(1).some(function(item) { return matchesFilter(item, feature); });
+      if (filter[0] === "!") return !matchesFilter(filter[1], feature);
+      return false;
+    }
+    function paintValue(value, feature, fallback) {
+      var resolved = valueFor(value, feature);
+      return resolved === undefined || resolved === null ? fallback : resolved;
     }
     function boundsForCorners(corners) {
       if (!Array.isArray(corners) || corners.length < 4) return null;
@@ -938,6 +983,7 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
         this.sources = new globalThis.Map();
         this.layers = new globalThis.Map();
         this.handlers = new globalThis.Map();
+        this.layerHandlers = new globalThis.Map();
         this.isLoaded = false;
         var center = Array.isArray(options.center) ? { lat: Number(options.center[1]), lng: Number(options.center[0]) } : (options.center || { lat: 0, lng: 0 });
         this.map = new google.maps.Map(this.container, {
@@ -970,89 +1016,153 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
           try { callback(payload); } catch (error) { console.error("Dashboard map callback failed.", error); }
         });
       }
-      on(name, callback) {
-        if (name === "error") return this;
-        if (name === "load" && this.isLoaded) { Promise.resolve().then(callback); return this; }
-        var callbacks = this.handlers.get(name) || [];
-        callbacks.push(callback);
-        this.handlers.set(name, callbacks);
+      layerHandlerKey(name, layerId) { return String(name) + "|" + String(layerId); }
+      attachLayerHandler(entry, name, callback) {
+        if (name !== "click") return;
+        entry.overlays.forEach(function(item) {
+          if (!item.overlay || typeof item.overlay.addListener !== "function" || !item.feature) return;
+          var listener = item.overlay.addListener("click", function(event) {
+            var position = event && event.latLng;
+            var lat = position && typeof position.lat === "function" ? position.lat() : Number(position && position.lat);
+            var lng = position && typeof position.lng === "function" ? position.lng() : Number(position && position.lng);
+            callback({
+              type: "click",
+              target: entry,
+              features: [item.feature],
+              lngLat: { lng: lng, lat: lat },
+              originalEvent: event && (event.domEvent || event)
+            });
+          });
+          entry.listeners.push(listener);
+        });
+      }
+      on(name, layerIdOrCallback, callback) {
+        if (typeof layerIdOrCallback === "function") {
+          var callbacks = this.handlers.get(name) || [];
+          callbacks.push(layerIdOrCallback);
+          this.handlers.set(name, callbacks);
+          if (name === "load" && this.isLoaded) Promise.resolve().then(layerIdOrCallback);
+          return this;
+        }
+        var layerId = String(layerIdOrCallback);
+        var key = this.layerHandlerKey(name, layerId);
+        var layerCallbacks = this.layerHandlers.get(key) || [];
+        layerCallbacks.push(callback);
+        this.layerHandlers.set(key, layerCallbacks);
+        var entry = this.layers.get(layerId);
+        if (entry) this.attachLayerHandler(entry, name, callback);
         return this;
       }
       addControl() { /* Native Google Maps controls are enabled in the map options. */ }
-      addSource(id, source) { this.sources.set(id, source); }
+      addSource(id, source) { this.sources.set(id, source); return this; }
       getSource(id) { return this.sources.get(id); }
-      removeSource(id) { this.sources.delete(id); }
+      removeSource(id) { this.sources.delete(id); return this; }
       getLayer(id) { return this.layers.get(id); }
       removeLayer(id) {
         var layer = this.layers.get(id);
-        if (layer && layer.overlay && typeof layer.overlay.setMap === "function") layer.overlay.setMap(null);
+        if (!layer) return this;
+        layer.listeners.forEach(function(listener) {
+          if (listener && typeof listener.remove === "function") listener.remove();
+        });
+        layer.overlays.forEach(function(item) {
+          if (item.overlay && typeof item.overlay.setMap === "function") item.overlay.setMap(null);
+        });
         this.layers.delete(id);
+        return this;
       }
       addLayer(spec) {
         var source = this.sources.get(spec.source);
         if (!source) throw new Error("Dashboard layer source is missing: " + spec.source);
         var paint = spec.paint || {};
         var visible = !(spec.layout && spec.layout.visibility === "none");
-        var overlay = null;
+        var overlays = [];
         if (spec.type === "raster") {
           var imageBounds = boundsForCorners(source.coordinates);
           if (imageBounds && source.url) {
-            overlay = new google.maps.GroundOverlay(source.url, imageBounds, {
-              opacity: Number.isFinite(Number(paint["raster-opacity"])) ? Number(paint["raster-opacity"]) : 0.82,
-              clickable: false
+            overlays.push({
+              overlay: new google.maps.GroundOverlay(source.url, imageBounds, {
+                opacity: Number.isFinite(Number(paint["raster-opacity"])) ? Number(paint["raster-opacity"]) : 0.82,
+                clickable: false
+              }),
+              feature: null
             });
           }
         } else {
-          var geometry = geometryFor(source.data);
-          if (spec.type === "fill" || spec.type === "line") {
-            var paths = polygonPaths(geometry);
-            if (paths.length) {
-              overlay = new google.maps.Polygon({
-                paths: paths,
-                clickable: false,
-                geodesic: false,
-                fillColor: paint["fill-color"] || "#66e2d3",
-                fillOpacity: spec.type === "fill" ? (Number(paint["fill-opacity"]) || 0.08) : 0,
-                strokeColor: paint["line-color"] || "#66e2d3",
-                strokeOpacity: spec.type === "line" ? 0.95 : 0,
-                strokeWeight: spec.type === "line" ? (Number(paint["line-width"]) || 2) : 0,
-                zIndex: spec.type === "line" ? 30 : 10
+          featuresFor(source.data).forEach(function(feature) {
+            if (!matchesFilter(spec.filter, feature)) return;
+            if (spec.type === "fill" || spec.type === "line") {
+              polygonPathGroups(feature.geometry).forEach(function(paths) {
+                var fillOpacity = Number(paint["fill-opacity"]);
+                var strokeWeight = Number(paint["line-width"]);
+                var overlay = new google.maps.Polygon({
+                  paths: paths,
+                  clickable: spec.type === "fill",
+                  geodesic: false,
+                  fillColor: paintValue(paint["fill-color"], feature, "#66e2d3"),
+                  fillOpacity: Number.isFinite(fillOpacity) ? fillOpacity : (spec.type === "fill" ? 0.08 : 0),
+                  strokeColor: paintValue(paint["line-color"], feature, "#66e2d3"),
+                  strokeOpacity: spec.type === "line" ? 0.95 : 0,
+                  strokeWeight: Number.isFinite(strokeWeight) ? strokeWeight : (spec.type === "line" ? 2 : 0),
+                  zIndex: spec.type === "line" ? 30 : 10
+                });
+                overlays.push({ overlay: overlay, feature: feature });
               });
+            } else if (spec.type === "circle") {
+              var point = pointFor(feature.geometry);
+              if (point && Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
+                overlays.push({
+                  overlay: new google.maps.Marker({
+                    position: point,
+                    clickable: false,
+                    zIndex: 50,
+                    icon: {
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: Math.max(3, Number(paint["circle-radius"]) || 6),
+                      fillColor: paintValue(paint["circle-color"], feature, "#f7c76b"),
+                      fillOpacity: 1,
+                      strokeColor: paintValue(paint["circle-stroke-color"], feature, "#ffffff"),
+                      strokeWeight: Number(paint["circle-stroke-width"]) || 1.5
+                    }
+                  }),
+                  feature: feature
+                });
+              }
             }
-          } else if (spec.type === "circle") {
-            var point = pointFor(geometry);
-            if (point && Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
-              overlay = new google.maps.Marker({
-                position: point,
-                clickable: false,
-                zIndex: 50,
-                icon: {
-                  path: google.maps.SymbolPath.CIRCLE,
-                  scale: Math.max(3, Number(paint["circle-radius"]) || 6),
-                  fillColor: paint["circle-color"] || "#f7c76b",
-                  fillOpacity: 1,
-                  strokeColor: paint["circle-stroke-color"] || "#ffffff",
-                  strokeWeight: Number(paint["circle-stroke-width"]) || 1.5
-                }
-              });
-            }
-          }
+          });
         }
-        var entry = { id: spec.id, spec: spec, source: source, overlay: overlay, visible: visible };
+        var entry = { id: spec.id, spec: spec, source: source, overlays: overlays, listeners: [], visible: visible };
         this.layers.set(spec.id, entry);
-        if (overlay && typeof overlay.setMap === "function") overlay.setMap(visible ? this.map : null);
+        entry.overlays.forEach(function(item) {
+          if (item.overlay && typeof item.overlay.setMap === "function") item.overlay.setMap(visible ? this.map : null);
+        }, this);
+        var self = this;
+        (this.layerHandlers.get(this.layerHandlerKey("click", spec.id)) || []).forEach(function(handler) {
+          self.attachLayerHandler(entry, "click", handler);
+        });
         return entry;
       }
       setLayoutProperty(id, property, value) {
         var layer = this.layers.get(id);
-        if (!layer || property !== "visibility") return;
+        if (!layer || property !== "visibility") return this;
         layer.visible = value !== "none";
-        if (layer.overlay && typeof layer.overlay.setMap === "function") layer.overlay.setMap(layer.visible ? this.map : null);
+        layer.overlays.forEach(function(item) {
+          if (item.overlay && typeof item.overlay.setMap === "function") item.overlay.setMap(layer.visible ? this.map : null);
+        }, this);
+        return this;
       }
       setPaintProperty(id, property, value) {
         var layer = this.layers.get(id);
-        if (!layer || !layer.overlay) return;
-        if (property === "raster-opacity" && typeof layer.overlay.setOpacity === "function") layer.overlay.setOpacity(Math.max(0, Math.min(1, Number(value))));
+        if (!layer) return this;
+        if (property === "raster-opacity") {
+          layer.overlays.forEach(function(item) {
+            if (item.overlay && typeof item.overlay.setOpacity === "function") item.overlay.setOpacity(Math.max(0, Math.min(1, Number(value))));
+          });
+        }
+        return this;
+      }
+      moveLayer() {
+        // Google Maps uses overlay zIndex/insertion order rather than MapLibre layer order.
+        return this;
       }
       fitBounds(bounds, options) {
         if (!Array.isArray(bounds) || bounds.length < 2) return;
@@ -1101,8 +1211,40 @@ window.SARGUARDIAN_GOOGLE_MAPS_ADAPTER = new Promise(function(resolve) {
         if (center) this.map.setCenter(center);
       }
     }
-
-    resolve({ Map: GoogleMapCompatibilityAdapter, NavigationControl: function() {} });
+    class GoogleMapsPopupCompatibilityAdapter {
+      constructor(options) {
+        this.options = options || {};
+        this.infoWindow = new google.maps.InfoWindow(
+          this.options.maxWidth ? { maxWidth: Number(this.options.maxWidth) } : {}
+        );
+        this.position = null;
+      }
+      setLngLat(position) {
+        var lat = Array.isArray(position) ? Number(position[1])
+          : (position && typeof position.lat === "function" ? position.lat() : Number(position && position.lat));
+        var lng = Array.isArray(position) ? Number(position[0])
+          : (position && typeof position.lng === "function" ? position.lng() : Number(position && position.lng));
+        if (Number.isFinite(lat) && Number.isFinite(lng)) this.position = { lat: lat, lng: lng };
+        return this;
+      }
+      setHTML(html) {
+        this.infoWindow.setContent(String(html == null ? "" : html));
+        return this;
+      }
+      addTo(mapAdapter) {
+        var targetMap = mapAdapter && mapAdapter.map ? mapAdapter.map : mapAdapter;
+        if (targetMap && this.position) {
+          this.infoWindow.setPosition(this.position);
+          this.infoWindow.open({ map: targetMap });
+        }
+        return this;
+      }
+      remove() {
+        this.infoWindow.close();
+        return this;
+      }
+    }
+    resolve({ Map: GoogleMapCompatibilityAdapter, NavigationControl: function() {}, Popup: GoogleMapsPopupCompatibilityAdapter });
   };
   script.onerror = function() {
     unavailable(window.SARGUARDIAN_GOOGLE_MAPS_ERROR
