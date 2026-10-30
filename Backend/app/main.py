@@ -809,8 +809,10 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
       :String(pixel.status||"NOT REPORTED");
     var pixelTimeSeriesNote=noCompatibleStack
       ?String(pixelStack.interpretation||"The retained GUNW pairs did not form a compatible repeated measurement network. This is NOT TESTABLE, not NO DETECTION.")
+        +(pixel.status==="WITHHELD_SCIENCE_GATES"?" The separate AOI-wide inversion was also withheld: "+String(pixel.reason||"connected-network and common-reference gates were not met."):"")
+        +" This is a network-data limitation, not a missing target point."
       :(pixel.status==="WITHHELD_SCIENCE_GATES"
-        ?"The "+networks.length+" strict geometry/sub-swath groups did not pass the connected/redundant network, common-pixel and reference-support gates. This is a data-network limitation, not a missing target point."
+        ?"The "+networks.length+" strict geometry/sub-swath groups did not pass the connected/redundant network, common-pixel and reference-support gates. This is a network-data limitation, not a missing target point."
         :String(pixel.reason||"Read the network gate and reference limitations before interpreting any derived velocity."));
     var rows=[
       {label:"Observation coverage",value:valid+" of "+obs.length+" products had usable pixels",note:(obs.length-valid)+" products had no usable raster pixels for this AOI. No usable pixels does not mean zero movement.",status:valid>0?"PARTLY AVAILABLE":"NOT AVAILABLE"},
