@@ -764,10 +764,10 @@ details[open]>summary{margin-bottom:12px;color:var(--aqua)}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 """
 DASHBOARD_READINESS_MARKUP = """
-<section class="run-readiness" id="sgRunReadiness" aria-label="Measurement readiness" aria-live="polite">
+<section class="run-readiness" id="sgRunReadiness" aria-label="Plain-language AOI scan summary" aria-live="polite">
   <div class="readiness-head">
-    <div><div class="kicker">RUN INTERPRETATION</div><h2>Measurement readiness</h2>
-      <p class="readiness-intro">A clearer distinction between what this run measured, what remains unavailable, and what must not be inferred from missing values.</p>
+    <div><div class="kicker">WHAT THIS RUN FOUND</div><h2>AOI scan summary</h2>
+      <p class="readiness-intro">This scan checks the whole drawn area. A target point is not required. The cards below separate usable observations, anomaly candidates and analyses that could not pass their science gates.</p>
     </div>
   </div>
   <div class="readiness-grid" id="sgRunReadinessGrid"></div>
@@ -775,43 +775,70 @@ DASHBOARD_READINESS_MARKUP = """
 """
 DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
 (function(){
+  function text(node,value){node.textContent=String(value==null?"—":value);}
   function mountReadiness(){
     var manifest=window.SARGUARDIAN_DASHBOARD;
     var root=document.getElementById("sgRunReadinessGrid");
     if(!manifest||!root)return;
     var obs=Array.isArray(manifest.observations)?manifest.observations:[];
-    var measurements=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_measurement_status==="MEASURED"&&(m.target_local_los_median_mm!=null||m.target_local_range_median_mm!=null||m.target_local_azimuth_median_mm!=null);}).length;
-    var floors=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_local_floor_status==="MEASURED"&&m.target_local_floor_mm_day!=null;}).length;
-    var context=manifest.site_context||{},place=context.place||{},target=context.measurement_target||{};
-    var placeName=typeof place.name==="string"&&place.name.trim()?place.name.trim():"No named place selected";
-    var targetStatus=String(target.status||"NOT_REPORTED");
-    var targetDescription=placeName==="No named place selected"?
-      "No display name is attached to this run. A product CRID is provenance metadata, not evidence that target-local motion was measured.":
-      "Named place context is attached. Check each selected pair before interpreting target-specific values.";
-    if(targetStatus==="IN_AOI_TARGET_CAPTURED")targetDescription+=" A target coordinate is recorded inside the AOI.";
-    else {
-      targetDescription+=" No valid in-AOI measurement target was recorded for this run. To report target-local displacement and local detection floors, perform a target-aware measurement pass with both target_latitude and target_longitude set to an explicit WGS84 point inside this polygon. Do not substitute the AOI center or product CRID for a target coordinate.";
-      if(targetStatus!=="NOT_REPORTED"&&targetStatus!=="")targetDescription+=" Target state: "+targetStatus.replace(/_/g," ").toLowerCase()+".";
-    }
+    var candidates=manifest.aoi_displacement_candidates||{};
+    var features=Array.isArray(candidates.features)?candidates.features:[];
+    var repeated=features.filter(function(f){return f&&f.properties&&f.properties.status==="REPEATED_SPATIAL_CANDIDATE";});
+    var single=features.filter(function(f){return f&&f.properties&&f.properties.status==="SINGLE_PAIR_CANDIDATE_UNCONFIRMED";});
+    var repeatedGoff=repeated.filter(function(f){return f.properties.product_type==="GOFF";}).length;
+    var repeatedGunw=repeated.filter(function(f){return f.properties.product_type==="GUNW";}).length;
+    var valid=obs.filter(function(p){return Number(p&&p.valid_pixels)>0;}).length;
+    var legacy=manifest.aoi_wide_displacement_screen||{};
+    var legacyCount=Number(legacy.candidate_count||0);
+    var pixel=manifest.aoi_relative_pixel_timeseries||{};
+    var networks=Array.isArray(pixel.networks)?pixel.networks:[];
+    var context=manifest.site_context||{},target=context.measurement_target||{};
+    var targetMeasured=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_measurement_status==="MEASURED"&&(m.target_local_los_median_mm!=null||m.target_local_range_median_mm!=null||m.target_local_azimuth_median_mm!=null);}).length;
+    var targetFloors=obs.filter(function(p){var m=p&&p.metrics||{};return m.target_local_floor_status==="MEASURED"&&m.target_local_floor_mm_day!=null;}).length;
+    var validation=manifest.validation||{};
     var rows=[
-      {label:"Target-local displacement",value:measurements+" / "+obs.length+" pairs measured",note:measurements===0?"Not measured is not the same as zero motion. No target-local LOS/range/along-track displacement is reported for these pairs.":"Only pairs marked MEASURED are counted; do not fill missing pairs with zero.",good:measurements>0},
-      {label:"Local detection floor",value:floors+" / "+obs.length+" pairs measured",note:floors===0?"No measured target-local detection floor is available. A missing floor is not a 0 mm/day threshold.":"Noise/detectability bounds are not observed displacement or velocity.",good:floors>0},
-      {label:"Place / target context",value:placeName,note:targetDescription,good:placeName!=="No named place selected"||targetStatus==="IN_AOI_TARGET_CAPTURED"}
+      {label:"Observation coverage",value:valid+" of "+obs.length+" products had usable pixels",note:(obs.length-valid)+" products had no usable raster pixels for this AOI. No usable pixels does not mean zero movement.",status:valid>0?"PARTLY AVAILABLE":"NOT AVAILABLE"},
+      {label:"Repeated anomaly fragments",value:repeated.length+" fragments",note:repeatedGoff+" GOFF offset fragments and "+repeatedGunw+" GUNW LOS fragments recur in compatible pairs. These are image-space fragments, not confirmed moving slopes or unique sites.",status:repeated.length?"CANDIDATES ONLY":"NONE AT SCREEN THRESHOLD"},
+      {label:"Single-pair anomaly fragments",value:single.length+" fragments",note:"These appeared in only one acquisition pair. They have weaker temporal support and need separate review.",status:single.length?"UNCONFIRMED":"NONE REPORTED"},
+      {label:"Separate legacy GOFF screen",value:legacyCount+" candidate regions",note:"This is a different, older GOFF-only method. It is not the same count as the "+features.length+" newer fragments and must not be added to them.",status:"SEPARATE RESULT"},
+      {label:"AOI-wide GUNW time-series",value:String(pixel.status||"NOT REPORTED"),note:pixel.status==="WITHHELD_SCIENCE_GATES"?"The "+networks.length+" strict geometry/sub-swath groups did not have enough repeated pairs, common pixels or reference support for a velocity map. This is a network-data limitation, not a missing target point.":"Read the network gate and reference limitations before interpreting any derived velocity.",status:"SCIENCE GATES"},
+      {label:"Optional target-point measurements",value:targetMeasured+" of "+obs.length+" pairs measured · "+targetFloors+" local floors",note:"No explicit measurement point was supplied. This is normal for Find Displacements: the AOI scan does not need a target. Not measured is not the same as zero motion.",status:target.status==="IN_AOI_TARGET_CAPTURED"?"TARGET RECORDED":"NO POINT PROVIDED"},
+      {label:"Processing checks",value:(validation.products_validated||0)+" of "+(validation.products_expected||obs.length)+" products passed",note:"Structural and provenance checks only. Independent geophysical validation: "+String(validation.independent_geophysical_validation||"NOT REPORTED")+". A processing PASS is not proof of actual ground movement.",status:String(validation.processing_status||"NOT REPORTED")}
     ];
     root.replaceChildren();
     rows.forEach(function(row){
       var card=document.createElement("div");card.className="readiness-card";
-      var label=document.createElement("div");label.className="label";label.textContent=row.label;
-      var badge=document.createElement("span");badge.className="readiness-badge"+(row.good?" good":"");badge.textContent=row.good?"REPORTED":"NOT REPORTED";
-      var value=document.createElement("strong");value.className="readiness-value";value.textContent=row.value;
-      var note=document.createElement("p");note.textContent=row.note;
+      var label=document.createElement("div");label.className="label";text(label,row.label);
+      var badge=document.createElement("span");badge.className="readiness-badge";text(badge,row.status);
+      var value=document.createElement("strong");value.className="readiness-value";text(value,row.value);
+      var note=document.createElement("p");text(note,row.note);
       card.append(label,badge,value,note);root.append(card);
     });
+    var summary=document.getElementById("summaryCards");
+    if(summary){
+      var cards=[
+        ["NISAR products",obs.length],
+        ["GUNW products",obs.filter(function(p){return p.product_type==="GUNW";}).length],
+        ["GOFF products",obs.filter(function(p){return p.product_type==="GOFF";}).length],
+        ["Products with usable pixels",valid],
+        ["Repeated anomaly fragments",repeated.length],
+        ["Single-pair fragments",single.length],
+        ["Legacy GOFF-only candidates",legacyCount]
+      ];
+      summary.replaceChildren();
+      cards.forEach(function(item){
+        var card=document.createElement("div");card.className="card";
+        var label=document.createElement("div");label.className="label";text(label,item[0]);
+        var value=document.createElement("div");value.className="big";text(value,item[1]);
+        card.append(label,value);summary.append(card);
+      });
+    }
   }
   if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",mountReadiness,{once:true});else mountReadiness();
 })();
 </script>
 """
+
 
 def _apply_dashboard_presentation(html: str) -> str:
     """Enhance an already verified dashboard document without changing its data."""
