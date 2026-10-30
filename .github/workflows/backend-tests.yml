@@ -90,6 +90,12 @@ jobs:
           done
           echo "SCIENCE_ENGINE_PIN_CONTRACT_PASS=$EXPECTED_SCIENCE_ENGINE_SHA"
 
+      - name: Exercise Google Maps dashboard overlay adapter
+        working-directory: Backend
+        run: |
+          node --version
+          node tests/google_maps_dashboard_adapter.test.mjs
+
       - name: Run backend test suite
         working-directory: Backend
         run: python -m pytest -q
