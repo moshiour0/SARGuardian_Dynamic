@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 const pythonSource = readFileSync(new URL("../app/main.py", import.meta.url), "utf8");
-const match = pythonSource.match(/DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT = r"""<script>\\s*([\\s\\S]*?)\\s*<\\/script>"""/);
+const match = pythonSource.match(/DASHBOARD_GOOGLE_MAPS_ADAPTER_SCRIPT = r"""<script>\s*([\s\S]*?)\s*<\/script>"""/);
 assert.ok(match, "Google Maps adapter script must remain embedded in the backend response");
 
 class FakeMap {
