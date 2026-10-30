@@ -285,6 +285,13 @@ def test_interactive_dashboard_is_returned_only_for_verified_owner_and_inlines_b
     assert "SARGuardian responsive science dashboard" in response.text
     assert 'id="sg-dashboard-readiness"' in response.text
     assert "Not measured is not the same as zero motion." in response.text
+    assert "This scan checks the whole drawn area. A target point is not required." in response.text
+    assert "Observation coverage" in response.text
+    assert "Repeated anomaly fragments" in response.text
+    assert "Separate legacy GOFF screen" in response.text
+    assert "not the same count as the" in response.text
+    assert "This is a network-data limitation, not a missing target point." in response.text
+    assert "Structural and provenance checks only." in response.text
     assert "private-drive-file-id" not in response.text
     assert "Processing report ↗" not in response.text
 
