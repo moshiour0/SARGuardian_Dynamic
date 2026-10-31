@@ -135,6 +135,16 @@ function App() {
     navigateTo(targetRoute);
   };
 
+  const handleOpenWorkspace = useCallback(() => {
+    if (!user) {
+      setPendingRoute(LANDSLIDE_PATH);
+      setAuthModalOpen(true);
+      return;
+    }
+    setAuthModalOpen(false);
+    navigateTo(LANDSLIDE_PATH);
+  }, [navigateTo, user]);
+
   if (isLandslideRoute(pathname)) {
     if (!user) {
       return (
@@ -149,7 +159,7 @@ function App() {
           onSignIn={handleSignIn}
           onSignOut={handleSignOut}
           onSelectEngine={handleSelectEngine}
-          onOpenWorkspace={() => navigateTo(LANDSLIDE_PATH)}
+          onOpenWorkspace={handleOpenWorkspace}
         />
       );
     }
@@ -184,7 +194,7 @@ function App() {
       onSignIn={handleSignIn}
       onSignOut={handleSignOut}
       onSelectEngine={handleSelectEngine}
-          onOpenWorkspace={() => navigateTo(LANDSLIDE_PATH)}
+          onOpenWorkspace={handleOpenWorkspace}
     />
   );
 }
