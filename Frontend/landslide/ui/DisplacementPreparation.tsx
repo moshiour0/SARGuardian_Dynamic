@@ -101,7 +101,7 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
             <span className="processing-stage-mark">{job.state === 'running' ? 'Active' : job.state}</span>
           </div>
           <p className="processing-stage-name">{job.stage || 'Stage not reported'}</p>
-          <p className="processing-stage-note">Elapsed task age: <strong><time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></strong></p>
+          <p className="processing-stage-note">Age: <strong><time data-testid="job-age">{formatElapsed(job.created_at, job.updated_at, job.state, clock)}</time></strong></p>
           <div className="processing-products">
             <div className="processing-panel-heading"><h4>Product inventory</h4><span>Source: {counts ? counts.source === 'processed-results' ? 'Processed results' : counts.source === 'worker-discovery' ? 'Worker discovery' : 'ASF catalogue preflight' : 'Not reported'}</span></div>
             {counts ? (
