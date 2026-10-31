@@ -1019,21 +1019,40 @@ DASHBOARD_READINESS_SCRIPT = r"""<script id="sg-dashboard-readiness">
 """
 
 
+
+DASHBOARD_NATIVE_MODE_SCRIPT = r"""<script id="sg-native-dashboard-mode-resize">
+(function(){
+  document.addEventListener('click',function(event){
+    var button=event.target&&event.target.closest?event.target.closest('[data-sg-mode]'):null;
+    if(!button||button.getAttribute('data-sg-mode')!=='evidence')return;
+    requestAnimationFrame(function(){
+      window.dispatchEvent(new CustomEvent('sarguardian:dashboard-mode',{detail:{mode:'evidence'}}));
+    });
+  });
+})();
+</script>"""
+
+
 def _apply_dashboard_presentation(html: str) -> str:
+
     """Enhance an already verified dashboard document without changing its data."""
     if "</head>" not in html or "</body>" not in html:
         raise ValueError("Interactive dashboard HTML is missing its document boundaries.")
     if 'name="referrer"' not in html:
         html = html.replace("</head>", '<meta name="referrer" content="strict-origin-when-cross-origin"></head>', 1)
 
+    native_mode_controls = all(
+        f'data-sg-mode="{mode}"' in html for mode in ("public", "evidence", "science")
+    )
     if "/* SARGuardian responsive science dashboard */" not in html:
+        mode_css = "" if native_mode_controls else DASHBOARD_MODES_CSS + "\\n"
         if "</style>" in html:
-            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n" + DASHBOARD_MODES_CSS + "\n</style>", 1)
+            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\\n" + DASHBOARD_PRESENTATION_CSS + "\\n" + mode_css + "</style>", 1)
         else:
-            html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style></head>", 1)
+            html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\\n" + DASHBOARD_PRESENTATION_CSS + "\\n" + mode_css + "</style></head>", 1)
 
-    if "<main>" in html and 'id="sgDashboardModes"' not in html:
-        html = html.replace("<main>", "<main>\n" + DASHBOARD_MODES_MARKUP, 1)
+    if not native_mode_controls and "<main>" in html and 'id="sgDashboardModes"' not in html:
+        html = html.replace("<main>", "<main>\\n" + DASHBOARD_MODES_MARKUP, 1)
 
     cards_anchor = '<div class="cards" id="summaryCards"></div>'
     if cards_anchor in html and 'id="sgRunReadiness"' not in html:
@@ -1050,7 +1069,7 @@ def _apply_dashboard_presentation(html: str) -> str:
         "if(event&&event.detail&&event.detail.mode==='evidence'&&M){"
         "requestAnimationFrame(function(){M.resize();});}});"
     )
-    if resize_hook in html and "sarguardian:dashboard-mode" not in html:
+    if resize_hook in html and "window.addEventListener('sarguardian:dashboard-mode'" not in html:
         html = html.replace(resize_hook, resize_replacement, 1)
 
     primary_hook = "M.addControl(new maplibregl.NavigationControl(),'top-right');M.on('load',function(){"
@@ -1078,7 +1097,15 @@ def _apply_dashboard_presentation(html: str) -> str:
     if compare_hook in html and "let compareOsmAccessErrors=0" not in html:
         html = html.replace(compare_hook, compare_replacement, 1)
 
-    if 'id="sg-dashboard-modes-script"' not in html:
+    if native_mode_controls:
+        scripts = ""
+        if 'id="sg-native-dashboard-mode-resize"' not in html:
+            scripts += DASHBOARD_NATIVE_MODE_SCRIPT
+        if 'id="sg-dashboard-readiness"' not in html:
+            scripts += DASHBOARD_READINESS_SCRIPT
+        if scripts:
+            html = html.replace("</body>", scripts + "</body>", 1)
+    elif 'id="sg-dashboard-modes-script"' not in html:
         html = html.replace("</body>", DASHBOARD_MODES_SCRIPT + DASHBOARD_READINESS_SCRIPT + "</body>", 1)
     elif 'id="sg-dashboard-readiness"' not in html:
         html = html.replace("</body>", DASHBOARD_READINESS_SCRIPT + "</body>", 1)
