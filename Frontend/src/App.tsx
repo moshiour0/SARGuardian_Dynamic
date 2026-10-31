@@ -121,7 +121,7 @@ function App() {
     }
   };
 
-  const handleSelectEngine = (_engine: Engine) => {
+  const handleSelectEngine = () => {
     // These workflows begin in the real AOI workspace. Known Place Analysis
     // remains a separate action inside it, not part of AOI-wide discovery.
     const targetRoute = LANDSLIDE_PATH;
