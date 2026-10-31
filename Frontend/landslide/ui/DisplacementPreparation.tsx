@@ -106,8 +106,8 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
             <div className="processing-panel-heading"><h4>Product inventory</h4><span>Source: {counts ? counts.source === 'processed-results' ? 'Processed results' : counts.source === 'worker-discovery' ? 'Worker discovery' : 'ASF catalogue preflight' : 'Not reported'}</span></div>
             {counts ? (
               <div className="processing-product-grid">
-                <article><span>GUNW</span><strong>{counts.GUNW}</strong></article>
-                <article><span>GOFF</span><strong>{counts.GOFF}</strong></article>
+                <article><span>GUNW granules</span><strong>{counts.GUNW}</strong></article>
+                <article><span>GOFF granules</span><strong>{counts.GOFF}</strong></article>
                 <article><span>Total</span><strong>{counts.GUNW + counts.GOFF}</strong></article>
               </div>
             ) : <p className="processing-not-reported">Product counts are not included in the current job response.</p>}
