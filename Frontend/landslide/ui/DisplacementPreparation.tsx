@@ -158,7 +158,7 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
       <div className="displacement-task-actions processing-actions">
         {hasActiveJob && <>
           <button type="button" className="demo-button danger-button" disabled={busy} onClick={onCancel}>{pendingAction === 'cancel' ? 'Cancelling…' : 'Cancel task'}</button>
-          <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>{pendingAction === 'refresh' ? 'Refreshing…' : 'Refresh status'}</button>
+          <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>{pendingAction === 'refresh' ? 'Refreshing…' : 'Refresh task'}</button>
         </>}
         {job.state === 'failed' && <>
           <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{pendingAction === 'retry' ? 'Retrying…' : 'Retry task'}</button>
