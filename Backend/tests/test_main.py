@@ -472,9 +472,9 @@ def test_dashboard_presentation_builds_three_audience_views_without_replacing_sc
     assert "Public Discovery" in rendered
     assert "Explore the Evidence" in rendered
     assert "Scientific Evidence" in rendered
-    assert 'id="sgPublicView"' in rendered
-    assert 'id="sgEvidenceView"' in rendered
-    assert 'id="sgScienceView"' in rendered
+    assert "publicPage.id='sgPublicView';" in rendered
+    assert "evidencePage.id='sgEvidenceView';" in rendered
+    assert "sciencePage.id='sgScienceView';" in rendered
     assert "Candidate pattern" in rendered
     assert "Measured displacement" in rendered
     assert "Not assessed" in rendered
