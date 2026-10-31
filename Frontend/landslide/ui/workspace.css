@@ -546,3 +546,18 @@
   .dashboard-selection { padding: 14px; }
   .dashboard-selection-actions .investigate-button { width: 100%; }
 }
+
+.processing-context-strip {
+  display: grid; grid-template-columns: repeat(2,minmax(0,1fr));
+  gap: 7px 16px; padding: 13px 16px;
+  border: 1px solid rgba(173,230,239,.16); border-radius: 8px;
+  background: rgba(7,33,48,.58);
+}
+.processing-context-strip p {
+  margin: 0; color: var(--sg-muted); font-size: 10px; line-height: 1.55;
+}
+.processing-context-strip strong { color: var(--sg-text); font-weight: 700; }
+.processing-context-strip small { color: var(--sg-muted); font-size: 9px; }
+@media(max-width:600px) {
+  .processing-context-strip { grid-template-columns: minmax(0,1fr); }
+}
