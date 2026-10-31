@@ -2157,7 +2157,7 @@ export function LandslidePage({ user, onHome, onResults, onDisplacements, onKnow
 
   const renderMapPage = () => (
     <div className="landslide-page">
-      {renderWorkspaceHeader('LANDSLIDE', 'Investigation workspace', 'Home', onHome)}
+      {renderWorkspaceHeader('FIND DISPLACEMENTS', 'AOI-wide surface-change screening', 'Home', onHome)}
 
       <main className="map-main">
         <MapCanvas
