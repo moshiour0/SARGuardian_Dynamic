@@ -20,7 +20,10 @@ describe('dashboard opens in a new same-origin tab', () => {
       },
     } as never;
     const html = renderToStaticMarkup(<ScientificResults job={job} user={{ getIdToken: vi.fn() } as never} />);
-    expect(html).toContain('Open interactive dashboard');
+    expect(html).toContain('How would you like to explore this result?');
+    expect(html).toContain('Public Discovery');
+    expect(html).toContain('Explore the Evidence');
+    expect(html).toContain('Scientific Evidence');
     expect(html).not.toContain('Load dashboard in Processing');
     expect(html).not.toContain('<iframe');
   });
@@ -206,7 +209,7 @@ describe('displacement preparation route', () => {
 
     const html = renderToStaticMarkup(<ScientificResults job={succeededJob as never} />);
 
-    expect(html).toContain('Download results');
+    expect(html).toContain('Open verified Drive archive');
     expect(html).toContain('https://drive.google.com/drive/folders/private-drive-folder-123');
     expect(html).not.toContain('Scientific diagnostics');
     expect(html).not.toContain('Input products');

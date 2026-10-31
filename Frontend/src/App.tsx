@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import type { Engine } from './data/engineData';
 import { listDisplacementJobs } from './api/catalog';
 import { Home } from './pages/Home';
 import { LandslidePage } from '../landslide/ui/LandslidePage';
@@ -121,24 +120,29 @@ function App() {
     }
   };
 
-  const handleSelectEngine = (engine: Engine) => {
+  const handleSelectEngine = () => {
+    // These workflows begin in the real AOI workspace. Known Place Analysis
+    // remains a separate action inside it, not part of AOI-wide discovery.
+    const targetRoute = LANDSLIDE_PATH;
     if (!user) {
-      if (engine.name === 'Landslide') {
-        setPendingRoute('/landslide');
-      } else {
-        setPendingRoute(null);
-      }
+      setPendingRoute(targetRoute);
       setAuthModalOpen(true);
       return;
     }
 
-    if (engine.name === 'Landslide') {
-      navigateTo('/landslide');
+    setAuthModalOpen(false);
+    navigateTo(targetRoute);
+  };
+
+  const handleOpenWorkspace = useCallback(() => {
+    if (!user) {
+      setPendingRoute(LANDSLIDE_PATH);
+      setAuthModalOpen(true);
       return;
     }
-
     setAuthModalOpen(false);
-  };
+    navigateTo(LANDSLIDE_PATH);
+  }, [navigateTo, user]);
 
   if (isLandslideRoute(pathname)) {
     if (!user) {
@@ -154,6 +158,7 @@ function App() {
           onSignIn={handleSignIn}
           onSignOut={handleSignOut}
           onSelectEngine={handleSelectEngine}
+          onOpenWorkspace={handleOpenWorkspace}
         />
       );
     }
@@ -188,6 +193,7 @@ function App() {
       onSignIn={handleSignIn}
       onSignOut={handleSignOut}
       onSelectEngine={handleSelectEngine}
+          onOpenWorkspace={handleOpenWorkspace}
     />
   );
 }
