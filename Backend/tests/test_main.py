@@ -434,6 +434,47 @@ def test_interactive_dashboard_rejects_drive_checksum_mismatch(monkeypatch) -> N
     assert "checksum" in response.json()["detail"]
 
 
+def test_dashboard_presentation_uses_native_audience_controls_without_duplicate_wrapper() -> None:
+    html = """<!doctype html><html><head><style>body{margin:0}</style></head><body><main>
+      <header><h1>What did NISAR observe?</h1></header>
+      <nav class="view-switcher" aria-label="Dashboard audience view">
+        <button type="button" data-sg-mode="public" aria-selected="true">Public Discovery</button>
+        <button type="button" data-sg-mode="evidence" aria-selected="false">Explore the Evidence</button>
+        <button type="button" data-sg-mode="science" aria-selected="false">Scientific Evidence</button>
+      </nav>
+      <div class="warn">Processing PASS is not independent geophysical validation.</div>
+      <section class="quick-panel"><div id="runStory"></div></section>
+      <div class="cards" id="summaryCards"></div>
+      <div class="layout">
+        <section class="panel"><div class="mapbox"><div id="map"></div></div><input id="timeline" type="range"></section>
+        <aside class="panel"><div class="kicker">Selected image pair</div><h2 id="productTitle">Pair</h2>
+          <p id="productDescription">Real acquisition pair.</p><div id="productMetrics"></div>
+          <details><div id="productTechnicalMetrics"></div></details>
+          <label>Pair<select id="productSelect"></select></label><details><svg id="supportChart"></svg></details>
+          <details><svg id="measurementChart"></svg></details><section class="candidate-section"><div id="aoiCandidateStatus"></div></section>
+          <details><div id="scienceStages"></div></details>
+        </aside>
+      </div>
+      <script type="module">let M=null,selected=0,playing=false,timer=null,activeLayer=null;M.addControl(new maplibregl.NavigationControl(),'top-right');M.on('load',function(){});</script>
+    </main></body></html>"""
+
+    rendered = main_module._apply_dashboard_presentation(html)
+
+    assert rendered.count('data-sg-mode="public"') == 1
+    assert rendered.count('data-sg-mode="evidence"') == 1
+    assert rendered.count('data-sg-mode="science"') == 1
+    assert 'id="sgDashboardModes"' not in rendered
+    assert 'id="sg-dashboard-modes-script"' not in rendered
+    assert 'id="sg-native-dashboard-mode-resize"' in rendered
+    assert 'id="sg-dashboard-readiness"' in rendered
+    assert "window.addEventListener('sarguardian:dashboard-mode'" in rendered
+    assert "window.dispatchEvent(new CustomEvent('sarguardian:dashboard-mode'" in rendered
+    assert 'id="sgRunReadiness"' in rendered
+    assert 'id="map"' in rendered
+    assert 'id="timeline"' in rendered
+
+
+
 def test_interactive_dashboard_requires_authentication() -> None:
     response = client.get(f"/api/displacement-jobs/{uuid4()}/dashboard")
     assert response.status_code == 401
