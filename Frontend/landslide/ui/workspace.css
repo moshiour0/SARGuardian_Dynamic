@@ -503,3 +503,46 @@
   .baseline-readiness-grid article > span { grid-row: auto; }
   .processing-products .processing-panel-heading { align-items: flex-start; flex-direction: column; }
 }
+
+/* Three-audience selector; each choice opens the same verified evidence bundle. */
+.landslide-route-shell .scientific-results-v2 { display: grid; gap: 15px; }
+.dashboard-selection {
+  display: grid; gap: 15px; padding: 19px;
+  border: 1px solid var(--sg-border); border-radius: 11px;
+  background: linear-gradient(145deg, rgba(8,38,55,.95), rgba(5,25,40,.96));
+}
+.dashboard-selection-heading h3 {
+  margin: 5px 0 6px; color: var(--sg-text);
+  font: 700 19px 'Manrope',sans-serif; letter-spacing: -.03em;
+}
+.dashboard-selection-heading p {
+  max-width: 700px; margin: 0; color: var(--sg-muted);
+  font-size: 11px; line-height: 1.55;
+}
+.dashboard-view-options { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.dashboard-view-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 7px;
+  min-width: 0; min-height: 162px; padding: 14px;
+  border: 1px solid rgba(173,230,239,.2); border-radius: 8px;
+  background: rgba(7,30,45,.7); color: var(--sg-text);
+  text-align: left; cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease;
+}
+.dashboard-view-option:hover { border-color: rgba(143,218,212,.6); background: rgba(13,49,63,.8); }
+.dashboard-view-option.is-selected {
+  border-color: rgba(112,205,196,.85);
+  background: rgba(18,66,75,.72);
+  box-shadow: inset 0 0 0 1px rgba(112,205,196,.16);
+}
+.dashboard-option-number { color: #a2ded8; font: 750 10px 'Manrope',sans-serif; letter-spacing: .15em; }
+.dashboard-view-option strong { color: #f7fcfd; font: 700 14px 'Manrope',sans-serif; }
+.dashboard-view-option small { color: #a8d5d9; font-size: 9px; font-weight: 700; }
+.dashboard-view-option > span:last-child { color: var(--sg-muted); font-size: 10px; line-height: 1.55; }
+.dashboard-selection-actions { display: flex; justify-content: flex-end; }
+.dashboard-selection-actions .investigate-button { min-width: 190px; }
+@media(max-width:760px) {
+  .dashboard-view-options { grid-template-columns: minmax(0,1fr); }
+  .dashboard-view-option { min-height: 0; }
+  .dashboard-selection { padding: 14px; }
+  .dashboard-selection-actions .investigate-button { width: 100%; }
+}
