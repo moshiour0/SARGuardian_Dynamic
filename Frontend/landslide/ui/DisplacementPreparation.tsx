@@ -94,6 +94,22 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
         <article><span>Job reference</span><strong className="processing-job-id">{job.id}</strong><small>Submitted {new Date(job.created_at).toLocaleString()}</small></article>
       </div>
 
+      <div className="processing-context-strip" aria-label="Selected place and measurement target">
+        <p><strong>Selected place:</strong> {job.place_name || 'No named place selected'}</p>
+        {Number.isFinite(job.place_latitude) && Number.isFinite(job.place_longitude) && (
+          <p><strong>Place coordinates:</strong> {job.place_latitude!.toFixed(5)}, {job.place_longitude!.toFixed(5)}</p>
+        )}
+        {hasTarget ? (
+          <p><strong>Measurement target:</strong> {job.target_latitude!.toFixed(5)}, {job.target_longitude!.toFixed(5)}
+            <small> In-AOI pair sampling point only; not a stable-ground reference and not a hazard finding.</small>
+          </p>
+        ) : (
+          <p><strong>Measurement target:</strong> Not supplied inside the submitted AOI.
+            <small> This is acceptable for Find Displacements: AOI-wide candidate screening still scans the polygon. Target-local measurements and point-based diagnostics remain withheld.</small>
+          </p>
+        )}
+      </div>
+
       <div className="processing-detail-grid">
         <section className="processing-detail-panel" aria-labelledby="processing-stage-title">
           <div className="processing-panel-heading">
@@ -145,10 +161,10 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
           <button type="button" className="investigate-button" disabled={busy} onClick={onRefresh}>{pendingAction === 'refresh' ? 'Refreshing…' : 'Refresh status'}</button>
         </>}
         {job.state === 'failed' && <>
-          <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{pendingAction === 'retry' ? 'Retrying…' : 'Retry failed task'}</button>
-          <button type="button" className="demo-button" onClick={onBack}>Return to map</button>
+          <button type="button" className="investigate-button" disabled={busy} onClick={onRetry}>{pendingAction === 'retry' ? 'Retrying…' : 'Retry task'}</button>
+          <button type="button" className="demo-button" onClick={onBack}>Go to map</button>
         </>}
-        {job.state === 'cancelled' && <button type="button" className="demo-button" onClick={onBack}>Return to map</button>}
+        {job.state === 'cancelled' && <button type="button" className="demo-button" onClick={onBack}>Go to map</button>}
       </div>
 
       <ScientificResults job={job} user={user} />
