@@ -52,7 +52,10 @@ function safeWorkflowUrl(value?: string | null): string | null {
   if (!value) return null;
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && url.hostname === 'github.com' ? url.toString() : null;
+    const isProjectWorkflow = url.protocol === 'https:'
+      && url.hostname === 'github.com'
+      && /^\\/moshiour0\\/SARGuardian_Dynamic\\/actions\\/runs\\/\\d+\\/?$/.test(url.pathname);
+    return isProjectWorkflow ? url.toString() : null;
   } catch {
     return null;
   }
