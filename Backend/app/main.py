@@ -763,6 +763,167 @@ details[open]>summary{margin-bottom:12px;color:var(--aqua)}
 @media(max-width:680px){main{padding:12px 10px 24px}header{align-items:flex-start;gap:13px;padding-bottom:18px}header>div:first-child{width:100%;max-width:none}header .controls{width:100%;justify-content:flex-start;gap:8px}h1{font-size:clamp(26px,7vw,34px)}.cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}.card,.panel{padding:13px;border-radius:14px}.label{font-size:10px}.big{font-size:clamp(20px,6vw,27px);margin-top:7px}.layout{grid-template-columns:minmax(0,1fr);gap:12px}.maphead{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}.maphead .controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:9px}.maphead .controls label{display:grid;align-content:start;gap:5px;min-width:0}.maphead .controls label:first-child{grid-column:1/-1}.maphead .controls select{width:100%;max-width:none}.mapbox{height:54svh;min-height:320px;max-height:480px}.timeline{grid-template-columns:minmax(0,1fr);gap:9px}.timeline small{white-space:normal}.metriclist{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.metricitem{padding:10px}.metricitem strong{font-size:13px}.chart{min-height:155px}.compare-grid,.scenario-grid{grid-template-columns:minmax(0,1fr)}.compare-mapbox{height:260px;min-height:240px}.compare-controls{display:grid;grid-template-columns:minmax(0,1fr)}.compare-controls label{min-width:0}.readiness-grid{grid-template-columns:minmax(0,1fr)}.readiness-card{padding:12px}.run-readiness{border-radius:14px;padding:13px}.warn{padding:12px;font-size:13px}.foot{font-size:11px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 """
+
+DASHBOARD_MODES_CSS = r"""
+.sg-mode-navigation{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:20px 0 22px}
+.sg-mode-tab{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:12px;row-gap:4px;min-width:0;min-height:78px;padding:15px 17px;border:1px solid rgba(135,190,207,.23);border-radius:15px;background:linear-gradient(145deg,rgba(15,39,54,.94),rgba(7,23,35,.96));color:var(--ink);text-align:left;cursor:pointer}
+.sg-mode-tab:hover{border-color:rgba(112,230,220,.65);background:linear-gradient(145deg,rgba(20,58,72,.98),rgba(8,28,41,.98))}
+.sg-mode-tab[aria-selected="true"]{border-color:rgba(112,230,220,.82);background:linear-gradient(135deg,rgba(17,67,78,.98),rgba(10,35,49,.98));box-shadow:inset 0 0 0 1px rgba(112,230,220,.12),0 12px 30px rgba(0,0,0,.18)}
+.sg-mode-number{grid-row:1 / span 2;display:grid;place-items:center;width:37px;height:37px;border:1px solid rgba(112,230,220,.32);border-radius:11px;background:rgba(112,230,220,.08);color:var(--aqua);font-size:12px;font-weight:850;letter-spacing:.04em}
+.sg-mode-title{display:block;min-width:0;font-size:14px;font-weight:850;letter-spacing:-.015em}
+.sg-mode-caption{display:block;min-width:0;color:var(--muted);font-size:11px;font-weight:500;line-height:1.4}
+.sg-dashboard-view{min-width:0;margin:0 0 24px;scroll-margin-top:18px}
+.sg-dashboard-view[hidden]{display:none!important}
+.sg-public-guide{margin:18px 0 0;padding:clamp(16px,2vw,24px);border:1px solid rgba(116,175,196,.22);border-radius:18px;background:linear-gradient(135deg,rgba(17,44,59,.95),rgba(8,24,36,.97));}
+.sg-public-guide h2{margin:5px 0 8px}
+.sg-public-guide-intro{max-width:82ch;margin:0 0 15px;color:var(--muted);font-size:13px;line-height:1.65}
+.sg-meaning-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.sg-meaning-card{min-width:0;padding:14px;border:1px solid rgba(116,175,196,.18);border-radius:13px;background:rgba(3,16,26,.53)}
+.sg-meaning-card strong{display:block;margin:0 0 6px;color:var(--ink);font-size:13px}
+.sg-meaning-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.6}
+.sg-explore-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(290px,.85fr);align-items:start;gap:16px}
+.sg-explore-grid>.panel{min-width:0}
+.sg-evidence-aside{display:grid;align-content:start;gap:11px}
+.sg-evidence-aside>.kicker{margin-top:2px}
+.sg-evidence-aside>h2{margin:0}
+.sg-evidence-aside>p{margin:0}
+.sg-evidence-aside>.metriclist{margin:4px 0 8px}
+.sg-evidence-aside>details{margin-top:2px}
+.sg-science-intro{margin:0 0 15px;padding:clamp(16px,1.8vw,22px);border:1px solid rgba(255,207,120,.28);border-left:3px solid var(--amber);border-radius:15px;background:linear-gradient(115deg,rgba(69,52,27,.35),rgba(10,28,40,.93))}
+.sg-science-intro h2{margin:5px 0 7px}
+.sg-science-intro p{max-width:100ch;margin:0;color:#d8e7ee;font-size:13px;line-height:1.7}
+.sg-science-panel{display:grid;gap:5px}
+.sg-science-panel>.candidate-section{margin-top:12px}
+.sg-science-panel>details{margin-top:8px}
+.sg-dashboard-view .panel{min-width:0}
+@media(max-width:1050px){.sg-explore-grid{grid-template-columns:minmax(0,1fr)}.sg-evidence-aside{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}.sg-evidence-aside>.kicker,.sg-evidence-aside>h2,.sg-evidence-aside>p,.sg-evidence-aside>#productMetrics{grid-column:1/-1}}
+@media(max-width:680px){.sg-mode-navigation{grid-template-columns:minmax(0,1fr);gap:8px;margin:13px 0 16px}.sg-mode-tab{grid-template-columns:34px minmax(0,1fr);min-height:64px;padding:10px 12px;border-radius:12px}.sg-mode-number{width:30px;height:30px;border-radius:9px}.sg-mode-title{font-size:13px}.sg-mode-caption{font-size:10px}.sg-meaning-grid{grid-template-columns:minmax(0,1fr)}.sg-public-guide{padding:14px;border-radius:14px}.sg-meaning-card{padding:12px}.sg-explore-grid{gap:11px}.sg-evidence-aside{grid-template-columns:minmax(0,1fr)}.sg-evidence-aside>.kicker,.sg-evidence-aside>h2,.sg-evidence-aside>p,.sg-evidence-aside>#productMetrics{grid-column:auto}}
+@media(prefers-reduced-motion:reduce){.sg-mode-tab{transition:none!important}}
+""";
+
+DASHBOARD_MODES_MARKUP = """
+<nav class="sg-mode-navigation" id="sgDashboardModes" role="tablist" aria-label="Choose a dashboard view">
+  <button class="sg-mode-tab" id="sgModePublic" type="button" role="tab" data-sg-mode="public" aria-controls="sgPublicView" aria-selected="true" tabindex="0">
+    <span class="sg-mode-number">01</span><span class="sg-mode-title">Public Discovery</span><span class="sg-mode-caption">Understand the result in plain language</span>
+  </button>
+  <button class="sg-mode-tab" id="sgModeEvidence" type="button" role="tab" data-sg-mode="evidence" aria-controls="sgEvidenceView" aria-selected="false" tabindex="-1">
+    <span class="sg-mode-number">02</span><span class="sg-mode-title">Explore the Evidence</span><span class="sg-mode-caption">Maps, real acquisition pairs and layers</span>
+  </button>
+  <button class="sg-mode-tab" id="sgModeScience" type="button" role="tab" data-sg-mode="science" aria-controls="sgScienceView" aria-selected="false" tabindex="-1">
+    <span class="sg-mode-number">03</span><span class="sg-mode-title">Scientific Evidence</span><span class="sg-mode-caption">Measurements, quality gates and provenance</span>
+  </button>
+</nav>
+""";
+
+DASHBOARD_MODES_SCRIPT = r"""<script id="sg-dashboard-modes-script">
+(function(){
+  function createElement(tag,className,textValue){
+    var node=document.createElement(tag);
+    if(className)node.className=className;
+    if(textValue!==undefined)node.textContent=textValue;
+    return node;
+  }
+  function setup(){
+    var root=document.querySelector('body > main')||document.querySelector('main');
+    var nav=document.getElementById('sgDashboardModes');
+    if(!root||!nav||nav.dataset.initialized==='true')return;
+    var quick=root.querySelector(':scope > .quick-panel');
+    var cards=root.querySelector(':scope > #summaryCards');
+    var readiness=root.querySelector(':scope > #sgRunReadiness');
+    var layout=root.querySelector(':scope > .layout');
+    var mapPanel=layout&&layout.querySelector(':scope > section.panel');
+    var sourceAside=layout&&layout.querySelector(':scope > aside.panel');
+    if(!quick||!cards||!layout||!mapPanel||!sourceAside){nav.remove();return;}
+
+    var notice=root.querySelector(':scope > .warn');
+    var header=root.querySelector(':scope > header');
+    if(notice)notice.after(nav);else if(header)header.after(nav);
+
+    var publicPage=createElement('section','sg-dashboard-view sg-public-view');
+    publicPage.id='sgPublicView';
+    publicPage.setAttribute('role','tabpanel');
+    publicPage.setAttribute('aria-labelledby','sgModePublic');
+    publicPage.append(quick,cards);
+    if(readiness)publicPage.append(readiness);
+
+    var guide=createElement('section','sg-public-guide');
+    guide.setAttribute('aria-labelledby','sgPublicGuideTitle');
+    guide.innerHTML='<div class="kicker">EVIDENCE BEFORE INTERPRETATION</div><h2 id="sgPublicGuideTitle">What can this result tell us?</h2><p class="sg-public-guide-intro">SARGuardian screens the whole drawn area without asking the user to guess where movement might be. Read each evidence state separately: a candidate is a review lead, a measurement needs valid scientific support, and a hazard is not confirmed by this dashboard.</p><div class="sg-meaning-grid"><article class="sg-meaning-card"><strong>01 · Candidate pattern</strong><p>A spatial SAR anomaly worth reviewing. It is not, by itself, measured ground movement or a confirmed landslide.</p></article><article class="sg-meaning-card"><strong>02 · Measured displacement</strong><p>A value is shown only when the source pixels, units, geometry, reference and quality checks support that measurement.</p></article><article class="sg-meaning-card"><strong>03 · Not assessed</strong><p>A withheld or unavailable result is not zero movement. It means the current observations did not support that analysis.</p></article></div>';
+    publicPage.append(guide);
+
+    var evidencePage=createElement('section','sg-dashboard-view sg-evidence-view');
+    evidencePage.id='sgEvidenceView';
+    evidencePage.setAttribute('role','tabpanel');
+    evidencePage.setAttribute('aria-labelledby','sgModeEvidence');
+    var evidenceGrid=createElement('div','sg-explore-grid');
+    var evidenceAside=createElement('aside','panel sg-evidence-aside');
+
+    var selectedKicker=sourceAside.querySelector(':scope > .kicker');
+    var productTitle=sourceAside.querySelector(':scope > #productTitle');
+    var productDescription=sourceAside.querySelector(':scope > #productDescription');
+    var productMetrics=sourceAside.querySelector(':scope > #productMetrics');
+    var directChildren=Array.prototype.slice.call(sourceAside.children);
+    var technicalBlock=directChildren.find(function(node){return node.querySelector&&node.querySelector('#productTechnicalMetrics');});
+    var productSelector=directChildren.find(function(node){return node.tagName==='LABEL'&&node.querySelector&&node.querySelector('#productSelect');});
+    var supportBlock=directChildren.find(function(node){return node.querySelector&&node.querySelector('#supportChart');});
+    [selectedKicker,productTitle,productDescription,productMetrics,technicalBlock,productSelector,supportBlock].forEach(function(node){
+      if(node)evidenceAside.append(node);
+    });
+
+    evidenceGrid.append(mapPanel,evidenceAside);
+    evidencePage.append(evidenceGrid);
+
+    var sciencePage=createElement('section','sg-dashboard-view sg-science-view');
+    sciencePage.id='sgScienceView';
+    sciencePage.setAttribute('role','tabpanel');
+    sciencePage.setAttribute('aria-labelledby','sgModeScience');
+    var scienceIntro=createElement('section','sg-science-intro');
+    scienceIntro.innerHTML='<div class="kicker">SCIENTIFIC REVIEW</div><h2>What the measurements support</h2><p>Processing PASS confirms structural and provenance checks, not independent geophysical accuracy. GUNW values are pairwise line-of-sight observations—not automatically cumulative or 3-D motion. GOFF offset anomalies are candidate patterns, not displacement velocity. Playback shows actual acquisitions; it does not interpolate or forecast.</p>';
+    sourceAside.classList.add('sg-science-panel');
+    sciencePage.append(scienceIntro,sourceAside);
+
+    layout.remove();
+    nav.after(publicPage,evidencePage,sciencePage);
+    nav.dataset.initialized='true';
+
+    var tabs=Array.prototype.slice.call(nav.querySelectorAll('[data-sg-mode]'));
+    var pages={public:publicPage,evidence:evidencePage,science:sciencePage};
+    function activate(mode,moveFocus){
+      if(!pages[mode])return;
+      Object.keys(pages).forEach(function(key){pages[key].hidden=key!==mode;});
+      tabs.forEach(function(tab){
+        var selected=tab.getAttribute('data-sg-mode')===mode;
+        tab.setAttribute('aria-selected',selected?'true':'false');
+        tab.tabIndex=selected?0:-1;
+        if(selected&&moveFocus)tab.focus();
+      });
+      document.body.setAttribute('data-sarguardian-view',mode);
+      if(mode==='evidence'){
+        window.dispatchEvent(new CustomEvent('sarguardian:dashboard-mode',{detail:{mode:mode}}));
+      }
+    }
+    tabs.forEach(function(tab){
+      tab.addEventListener('click',function(){activate(tab.getAttribute('data-sg-mode'),false);});
+    });
+    nav.addEventListener('keydown',function(event){
+      var current=tabs.indexOf(document.activeElement);
+      if(current<0)return;
+      var next=current;
+      if(event.key==='ArrowRight')next=(current+1)%tabs.length;
+      else if(event.key==='ArrowLeft')next=(current+tabs.length-1)%tabs.length;
+      else if(event.key==='Home')next=0;
+      else if(event.key==='End')next=tabs.length-1;
+      else return;
+      event.preventDefault();
+      var mode=tabs[next].getAttribute('data-sg-mode');
+      activate(mode,true);
+    });
+    activate('public',false);
+  }
+  if(document.readyState==='loading')setup();else setup();
+})();
+</script>""";
+
 DASHBOARD_READINESS_MARKUP = """
 <section class="run-readiness" id="sgRunReadiness" aria-label="Plain-language AOI scan summary" aria-live="polite">
   <div class="readiness-head">
@@ -867,9 +1028,12 @@ def _apply_dashboard_presentation(html: str) -> str:
 
     if "/* SARGuardian responsive science dashboard */" not in html:
         if "</style>" in html:
-            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style>", 1)
+            html = html.replace("</style>", "/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n" + DASHBOARD_MODES_CSS + "\n</style>", 1)
         else:
             html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style></head>", 1)
+
+    if "<main>" in html and 'id="sgDashboardModes"' not in html:
+        html = html.replace("<main>", "<main>\\n" + DASHBOARD_MODES_MARKUP, 1)
 
     cards_anchor = '<div class="cards" id="summaryCards"></div>'
     if cards_anchor in html and 'id="sgRunReadiness"' not in html:
@@ -879,6 +1043,15 @@ def _apply_dashboard_presentation(html: str) -> str:
     status_markup = '<div id="mapBasemapStatus" class="map-basemap-status hidden" role="status">Basemap tiles are blocked or unavailable. The georeferenced AOI and scientific raster overlays remain available on the map canvas.</div>'
     if map_anchor in html and 'id="mapBasemapStatus"' not in html:
         html = html.replace(map_anchor, map_anchor + status_markup, 1)
+
+    resize_hook = "let M=null,selected=0,playing=false,timer=null,activeLayer=null;"
+    resize_replacement = resize_hook + (
+        "window.addEventListener('sarguardian:dashboard-mode',function(event){"
+        "if(event&&event.detail&&event.detail.mode==='evidence'&&M){"
+        "requestAnimationFrame(function(){M.resize();});}});"
+    )
+    if resize_hook in html and "sarguardian:dashboard-mode" not in html:
+        html = html.replace(resize_hook, resize_replacement, 1)
 
     primary_hook = "M.addControl(new maplibregl.NavigationControl(),'top-right');M.on('load',function(){"
     primary_replacement = (
@@ -905,7 +1078,9 @@ def _apply_dashboard_presentation(html: str) -> str:
     if compare_hook in html and "let compareOsmAccessErrors=0" not in html:
         html = html.replace(compare_hook, compare_replacement, 1)
 
-    if 'id="sg-dashboard-readiness"' not in html:
+    if 'id="sg-dashboard-modes-script"' not in html:
+        html = html.replace("</body>", DASHBOARD_MODES_SCRIPT + DASHBOARD_READINESS_SCRIPT + "</body>", 1)
+    elif 'id="sg-dashboard-readiness"' not in html:
         html = html.replace("</body>", DASHBOARD_READINESS_SCRIPT + "</body>", 1)
     return html
 
