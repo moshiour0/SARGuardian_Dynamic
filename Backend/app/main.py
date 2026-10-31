@@ -1033,7 +1033,7 @@ def _apply_dashboard_presentation(html: str) -> str:
             html = html.replace("</head>", "<style>/* SARGuardian responsive science dashboard */\n" + DASHBOARD_PRESENTATION_CSS + "\n</style></head>", 1)
 
     if "<main>" in html and 'id="sgDashboardModes"' not in html:
-        html = html.replace("<main>", "<main>\\n" + DASHBOARD_MODES_MARKUP, 1)
+        html = html.replace("<main>", "<main>\n" + DASHBOARD_MODES_MARKUP, 1)
 
     cards_anchor = '<div class="cards" id="summaryCards"></div>'
     if cards_anchor in html and 'id="sgRunReadiness"' not in html:
