@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
-import type { Engine } from './data/engineData';
 import { listDisplacementJobs } from './api/catalog';
 import { Home } from './pages/Home';
 import { LandslidePage } from '../landslide/ui/LandslidePage';
