@@ -437,3 +437,58 @@ def test_interactive_dashboard_rejects_drive_checksum_mismatch(monkeypatch) -> N
 def test_interactive_dashboard_requires_authentication() -> None:
     response = client.get(f"/api/displacement-jobs/{uuid4()}/dashboard")
     assert response.status_code == 401
+
+
+def test_dashboard_presentation_builds_three_audience_views_without_replacing_science_controls() -> None:
+    html = """<!doctype html><html><head></head><body><main>
+      <header><h1>What did NISAR observe?</h1></header>
+      <div class="warn">Processing PASS is not independent geophysical validation.</div>
+      <section class="quick-panel"><div id="runStory"></div></section>
+      <div class="cards" id="summaryCards"></div>
+      <div class="layout">
+        <section class="panel"><div class="mapbox"><div id="map"></div></div>
+          <input id="timeline" type="range"><select id="bandSelect"></select>
+        </section>
+        <aside class="panel">
+          <div class="kicker">Selected image pair</div><h2 id="productTitle">Pair</h2>
+          <p id="productDescription">Real acquisition pair.</p><div id="productMetrics"></div>
+          <details><div id="productTechnicalMetrics"></div></details>
+          <label>Pair<select id="productSelect"></select></label>
+          <details><svg id="supportChart"></svg></details>
+          <details><svg id="measurementChart"></svg></details>
+          <section class="candidate-section"><div id="aoiCandidateStatus"></div></section>
+          <details><div id="scienceStages"></div></details>
+        </aside>
+      </div>
+      <script type="module">let M=null,selected=0,playing=false,timer=null,activeLayer=null;M.addControl(new maplibregl.NavigationControl(),'top-right');M.on('load',function(){});</script>
+    </main></body></html>"""
+
+    rendered = main_module._apply_dashboard_presentation(html)
+
+    assert 'id="sgDashboardModes"' in rendered
+    assert 'data-sg-mode="public"' in rendered
+    assert 'data-sg-mode="evidence"' in rendered
+    assert 'data-sg-mode="science"' in rendered
+    assert "Public Discovery" in rendered
+    assert "Explore the Evidence" in rendered
+    assert "Scientific Evidence" in rendered
+    assert "publicPage.id='sgPublicView';" in rendered
+    assert "evidencePage.id='sgEvidenceView';" in rendered
+    assert "sciencePage.id='sgScienceView';" in rendered
+    assert "Candidate pattern" in rendered
+    assert "Measured displacement" in rendered
+    assert "Not assessed" in rendered
+    assert "GUNW values are pairwise line-of-sight observations" in rendered
+    assert "GOFF offset anomalies are candidate patterns" in rendered
+    assert "Not measured is not the same as zero motion." in rendered
+    assert 'id="map"' in rendered
+    assert 'id="timeline"' in rendered
+    assert 'id="bandSelect"' in rendered
+    assert 'id="productTechnicalMetrics"' in rendered
+    assert 'id="measurementChart"' in rendered
+    assert 'id="aoiCandidateStatus"' in rendered
+    assert 'id="scienceStages"' in rendered
+    assert "sarguardian:dashboard-mode" in rendered
+    assert "requestAnimationFrame(function(){M.resize();});" in rendered
+    assert "12 cm/year" not in rendered
+    assert ">70% confidence" not in rendered
