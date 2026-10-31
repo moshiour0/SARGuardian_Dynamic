@@ -85,7 +85,7 @@ function ArchiveSection({ user, onSignIn, onOpenWorkspace }: {
             <article className="archive-item" key={job.id}>
               <div className="archive-item-main">
                 <div className="archive-item-topline">
-                  <span className={`archive-state archive-state-${job.state}`}>{job.state.replaceAll('_', ' ')}</span>
+                  <span className={`archive-state archive-state-${job.state}`}>{job.state.replace(/_/g, ' ')}</span>
                   <span className="archive-job-id">Job {job.id.slice(0, 8)}</span>
                 </div>
                 <h3>{job.place_name || 'AOI-wide displacement analysis'}</h3>
