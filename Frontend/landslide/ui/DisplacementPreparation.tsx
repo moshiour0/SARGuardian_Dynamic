@@ -118,7 +118,7 @@ export function DisplacementJobStatus({ job, pendingAction, clock, granuleCounts
         <section className="processing-detail-panel baseline-readiness-panel" aria-labelledby="baseline-readiness-title">
           <div className="processing-panel-heading">
             <div><span className="result-kicker">INTERFEROMETRIC GEOMETRY</span><h3 id="baseline-readiness-title">Baseline analysis</h3></div>
-            <span className="processing-stage-mark">Metadata pending</span>
+            <span className="processing-stage-mark">Not exposed</span>
           </div>
           <p>Baseline geometry helps assess acquisition-pair suitability. It is not a displacement measurement.</p>
           <div className="baseline-readiness-grid">
