@@ -32,7 +32,7 @@ export const engines: Engine[] = [
     name: 'Known Place Analysis',
     status: 'AVAILABLE',
     description: 'Start from a known location or measurement target for a focused, separate research workflow.',
-    actionLabel: 'Analyse a known place',
+    actionLabel: 'Select an area and target',
     image: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=900&q=88',
     icon: 'known-place',
   },
