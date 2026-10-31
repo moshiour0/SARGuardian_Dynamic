@@ -121,23 +121,18 @@ function App() {
     }
   };
 
-  const handleSelectEngine = (engine: Engine) => {
+  const handleSelectEngine = (_engine: Engine) => {
+    // These workflows begin in the real AOI workspace. Known Place Analysis
+    // remains a separate action inside it, not part of AOI-wide discovery.
+    const targetRoute = LANDSLIDE_PATH;
     if (!user) {
-      if (engine.name === 'Landslide') {
-        setPendingRoute('/landslide');
-      } else {
-        setPendingRoute(null);
-      }
+      setPendingRoute(targetRoute);
       setAuthModalOpen(true);
       return;
     }
 
-    if (engine.name === 'Landslide') {
-      navigateTo('/landslide');
-      return;
-    }
-
     setAuthModalOpen(false);
+    navigateTo(targetRoute);
   };
 
   if (isLandslideRoute(pathname)) {
@@ -154,6 +149,7 @@ function App() {
           onSignIn={handleSignIn}
           onSignOut={handleSignOut}
           onSelectEngine={handleSelectEngine}
+          onOpenWorkspace={() => navigateTo(LANDSLIDE_PATH)}
         />
       );
     }
@@ -188,6 +184,7 @@ function App() {
       onSignIn={handleSignIn}
       onSignOut={handleSignOut}
       onSelectEngine={handleSelectEngine}
+          onOpenWorkspace={() => navigateTo(LANDSLIDE_PATH)}
     />
   );
 }
