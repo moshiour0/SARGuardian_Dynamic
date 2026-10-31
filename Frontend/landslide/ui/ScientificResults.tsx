@@ -4,6 +4,57 @@ import type { DisplacementJob } from '../../src/api/catalog';
 import { getInteractiveDashboardHtml } from '../../src/api/catalog';
 import { waitForDashboardPopupLoad, writeDashboardHtml } from './dashboardPopup';
 
+type DashboardView = 'public' | 'evidence' | 'science';
+
+const dashboardViews: Array<{ id: DashboardView; title: string; audience: string; description: string }> = [
+  {
+    id: 'public',
+    title: 'Public Discovery',
+    audience: 'Communities and general users',
+    description: 'A plain-language explanation of the observations, candidate evidence and limitations.',
+  },
+  {
+    id: 'evidence',
+    title: 'Explore the Evidence',
+    audience: 'Analysts and decision teams',
+    description: 'Interactive map layers, real acquisition pairs and observation playback.',
+  },
+  {
+    id: 'science',
+    title: 'Scientific Evidence',
+    audience: 'Researchers and technical reviewers',
+    description: 'Measurement diagnostics, quality gates, acquisition networks and provenance.',
+  },
+];
+
+function dashboardHtmlWithPreferredView(html: string, view: DashboardView): string {
+  const script = `<script id="sarguardian-preferred-dashboard-view">
+(function () {
+  var preferredView = ${JSON.stringify(view)};
+  function selectPreferredView() {
+    var button = document.querySelector('[data-sg-mode="' + preferredView + '"]');
+    if (!button) return false;
+    if (button.getAttribute('aria-selected') !== 'true') button.click();
+    return true;
+  }
+  function start() {
+    if (selectPreferredView()) return;
+    var observer = new MutationObserver(function () {
+      if (selectPreferredView()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.setTimeout(function () { observer.disconnect(); }, 5000);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>`;
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${script}</body>`) : `${html}${script}`;
+}
+
 function driveFolderUrl(job: DisplacementJob): string | undefined {
   if (job.state !== 'succeeded' || !job.result_summary) return undefined;
   const storage = job.result_summary.storage_verification;
@@ -32,6 +83,7 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
   const folderUrl = driveFolderUrl(job);
   const canOpenDashboard = dashboardAvailable(job);
   const [opening, setOpening] = useState(false);
+  const [selectedView, setSelectedView] = useState<DashboardView>('public');
   const [dashboardError, setDashboardError] = useState('');
 
   async function openDashboard() {
@@ -57,10 +109,9 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
       await waitForDashboardPopupLoad(popup, window.location.origin);
       popupReady = true;
       popup.document.title = 'SARGuardian · Interactive dashboard';
-      popup.document.body.textContent = 'Verifying the private result bundle and preparing the interactive dashboard…';
+      popup.document.body.textContent = 'Verifying the private result bundle and preparing the selected dashboard view…';
       const html = await getInteractiveDashboardHtml(job.id, user);
-      // Replacing the fully-loaded app document does not change its real HTTPS URL.
-      writeDashboardHtml(popup, html);
+      writeDashboardHtml(popup, dashboardHtmlWithPreferredView(html, selectedView));
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Could not open the interactive dashboard.';
       setDashboardError(message);
@@ -82,25 +133,47 @@ export function ScientificResults({ job, user }: { job: DisplacementJob; user: P
 
   if (!folderUrl && !canOpenDashboard) return null;
   return (
-    <section className="scientific-results" aria-label="Scientific result outputs">
-      <div className="scientific-results-actions">
-        {canOpenDashboard && (
-          <button
-            className="investigate-button validated-output-link"
-            type="button"
-            onClick={() => { void openDashboard(); }}
-            disabled={opening}
-          >
-            {opening ? 'Opening dashboard…' : 'Open interactive dashboard'}
-          </button>
-        )}
-        {folderUrl && (
+    <section className="scientific-results scientific-results-v2" aria-label="Scientific result outputs">
+      {canOpenDashboard && (
+        <div className="dashboard-selection">
+          <div className="dashboard-selection-heading">
+            <div>
+              <span className="result-kicker">CHOOSE YOUR VIEW</span>
+              <h3>How would you like to explore this result?</h3>
+              <p>All three views use the same verified result bundle. Only the presentation and level of detail change.</p>
+            </div>
+          </div>
+          <div className="dashboard-view-options" role="group" aria-label="Dashboard audience view">
+            {dashboardViews.map((view, index) => (
+              <button
+                className={`dashboard-view-option ${selectedView === view.id ? 'is-selected' : ''}`}
+                type="button"
+                key={view.id}
+                aria-pressed={selectedView === view.id}
+                onClick={() => setSelectedView(view.id)}
+              >
+                <span className="dashboard-option-number">0{index + 1}</span>
+                <strong>{view.title}</strong>
+                <small>{view.audience}</small>
+                <span>{view.description}</span>
+              </button>
+            ))}
+          </div>
+          <div className="dashboard-selection-actions">
+            <button className="investigate-button validated-output-link" type="button" onClick={() => void openDashboard()} disabled={opening}>
+              {opening ? 'Opening selected view…' : `Open ${dashboardViews.find((view) => view.id === selectedView)?.title ?? 'dashboard'}`}
+            </button>
+          </div>
+        </div>
+      )}
+      {folderUrl && (
+        <div className="scientific-results-actions">
           <a className="investigate-button validated-output-link" href={folderUrl} target="_blank" rel="noreferrer">
-            Download results
+            Open verified Drive archive
           </a>
-        )}
-      </div>
-      {canOpenDashboard && <p className="scientific-results-note">The map and playback use the verified result bundle. Processing PASS is not independent geophysical validation; limitations remain visible in the dashboard.</p>}
+        </div>
+      )}
+      {canOpenDashboard && <p className="scientific-results-note">A processing PASS confirms structural and provenance checks, not independent geophysical accuracy. Candidate patterns are not hazard confirmations; pairwise LOS is not automatically cumulative or 3-D movement.</p>}
       {dashboardError && <p className="scientific-results-error" role="alert">{dashboardError}</p>}
     </section>
   );
