@@ -893,7 +893,7 @@ export function RiverShiftPage({ onHome, user, firebaseConfigured, authState, on
         <button className="rs-back" onClick={onHome} type="button">← SARGuardian</button>
         <div className="rs-brand">
           <span className="rs-brand-mark">RS</span>
-          <div><strong>RiverShift</strong><small>FLOOD & RIVER CHANGE INTELLIGENCE</small></div>
+          <div><strong>RiverShift</strong><small>NISAR-BASED RIVER CHANGE OBSERVATORY</small></div>
         </div>
         <div className="rs-header-actions">
           <span className="rs-challenge-tag">NASA SPACE APPS 2026 · DANCING WITH THE SARS</span>
@@ -1073,7 +1073,7 @@ export function RiverShiftPage({ onHome, user, firebaseConfigured, authState, on
             <li><b>Prepare</b><span>Inspect HDF5, check maturity, extract the same diagonal term and clip the same AOI.</span></li>
             <li><b>Detect</b><span>Screen open water on comparable pre-event, flood-period and post-event observations.</span></li>
             <li><b>Measure</b><span>Quantify water coverage and persistent land/water transitions.</span></li>
-            <li><b>Validate</b><span>Compare against an independent reference and report F1/IoU.</span></li>
+            <li><b>Cross-check</b><span>Use a separate SAR reference only when its observation is within ±3 days and at least 80% of NISAR-valid pixels share valid labels. Otherwise the outcome is NO_SCORE.</span></li>
           </ol>
           <a className="rs-doc-link" href="https://nisar-docs.asf.alaska.edu/gcov/" target="_blank" rel="noreferrer">NISAR GCOV product guide ↗</a>
           <a className="rs-doc-link" href="https://docs.asf.alaska.edu/api/keywords/" target="_blank" rel="noreferrer">ASF Search API documentation ↗</a>
@@ -1264,7 +1264,7 @@ export function RiverShiftPage({ onHome, user, firebaseConfigured, authState, on
             <div><strong>NASA measurement data</strong><span>NASA–ISRO NISAR Level-2 GCOV radar observations drive the water and land-transition screening.</span></div>
             <div><strong>NASA data access</strong><span>NASA Earthdata and ASF DAAC provide the exact NISAR granules; product identities and checksums are retained with the result.</span></div>
             <div><strong>Third-party map context only</strong><span>Google Maps Satellite imagery helps orient the result geographically. Basemap imagery is not used by the analysis and is not an independent validation layer.</span></div>
-            <div><strong>Optional independent agency comparison</strong><span>Copernicus Sentinel-2 L2A can be compared with a supplied NISAR water mask using clear-sky SCL and B03/B11 MNDWI. This optional screen is not run for this result unless a comparison report is attached, and it is not ground truth.</span></div>
+            <div><strong>Optional SAR cross-check · separate workflow</strong><span>NASA/JPL OPERA DSWx-S1 uses Sentinel-1 C-band radar to map open water. RiverShift can compare WTR class 1 (open water) and class 0 (not water) with a retained NISAR mask only when sensing dates are within ±3 days and common labelled support is at least 80%. Inundated vegetation and masked pixels remain excluded; a failed gate means NO_SCORE. This is cross-sensor water agreement, not field truth or proof of erosion/deposition, and the separate replay is not part of the default live job.</span></div>
           </div>
           {hasVerifiedOverlay && <p className="rs-muted">Verified layer(s) are drawn; each GeoJSON SHA-256 matches the loaded report. Candidate classes require scientific interpretation and are not field-confirmed land change.</p>}
           {hasJobPreviewOverlay && !hasVerifiedOverlay && <p className="rs-warning-inline">Provisional map preview is derived from checksum-bound full-resolution masks using lower-resolution occupancy footprints. Different classes can appear to overlap at preview scale even when their full-resolution masks do not. The map is for visual orientation only; full-resolution masks and measurements remain authoritative and PROVISIONAL.</p>}
