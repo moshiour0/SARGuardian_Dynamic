@@ -133,6 +133,20 @@ function overlapText(value: number | null, digits = 3): string {
   return value === null ? 'Not available' : value.toFixed(digits);
 }
 
+function eventObservationTiming(summary: Record<string, unknown> | null): {
+  eventDate: string;
+  observationDate: string;
+  offsetDays: number;
+} | null {
+  const timing = asRecord(summary?.event_observation_timing);
+  const eventDate = timing?.event_date;
+  const observationDate = timing?.first_post_event_observation;
+  const offsetDays = timing?.offset_days;
+  if (typeof eventDate !== 'string' || typeof observationDate !== 'string'
+    || typeof offsetDays !== 'number' || !Number.isFinite(offsetDays) || offsetDays <= 0) return null;
+  return { eventDate, observationDate, offsetDays };
+}
+
 function OverlapAuditPanel({ summary }: { summary: Record<string, unknown> }) {
   const sourceAudit = asRecord(summary.candidate_overlap_audit);
   const sourcePairs = asRecord(sourceAudit?.pairwise);
@@ -347,6 +361,7 @@ export function RiverShiftPage({ onHome, user, firebaseConfigured, authState, on
   const hasJobPreviewOverlay = Boolean(jobPreview && riverJobId && jobPreview.jobId === riverJobId
     && (jobPreview.changeLayer || currentJobFrame));
   const activeJobPreview = jobPreview && riverJobId && jobPreview.jobId === riverJobId ? jobPreview : null;
+  const eventTiming = eventObservationTiming(riverJob?.result_summary || null);
   const isGeneralScanJob = Boolean(riverJob?.state === 'succeeded' && riverJob.analysis_mode === 'general_scan');
   const generalChangeMarkers = useMemo(() => (
     isGeneralScanJob && activeJobPreview?.changeLayer
@@ -1105,6 +1120,13 @@ export function RiverShiftPage({ onHome, user, firebaseConfigured, authState, on
           ? 'No event date was supplied or inferred. Independent scientific validation is still pending.'
           : 'The event date was user supplied and has not been independently confirmed; independent scientific validation is still pending.'}
           {' '}The map below can show a checksum-checked display preview; its measurements are not verified.</div>}
+        {riverJob.state === 'succeeded' && riverJob.analysis_mode === 'event_based' && eventTiming && (
+          <div className="rs-warning-inline" role="status">
+            <strong>Event-to-observation gap: +{eventTiming.offsetDays} days.</strong>
+            {' '}The first qualifying NISAR acquisition was {eventTiming.observationDate}, after the supplied event date {eventTiming.eventDate}.
+            This is an actual acquisition, not a measured flood-peak stage. Check a same-stage gauge or independent reference before attributing mapped water or morphology changes to this event.
+          </div>
+        )}
         {riverJob.state === 'succeeded' && riverJob.result_summary && (
           <OverlapAuditPanel summary={riverJob.result_summary} />
         )}
