@@ -1,7 +1,11 @@
 # SARGuardian — standalone frontend
 
-Existing React + TypeScript + Vite frontend extracted from SARGuardian.
-The UI source and existing authentication behavior are preserved.
+React + TypeScript + Vite frontend for SARGuardian's AOI-driven Earth-observation workflows.
+The RiverShift workspace provides a global, location-independent NISAR L-band GCOV screening path for
+eligible river reaches: users draw a WGS84 AOI, choose a date window, and the application discovers
+compatible acquisitions for that selection. The Jamuna–Chowhali run is a demonstration case, not a fixed
+geographical target. The RiverShift card is labelled RESEARCH PREVIEW because each result's scientific
+review state is specific to its AOI and observation window.
 
 ## Run locally
 
@@ -35,9 +39,21 @@ conditions before publishing a public demo.
 ## Run with the metadata API
 
 Start the backend from `SARGuardian_Dynamic/Backend` (see its README), then
-set `VITE_SARGUARDIAN_API_URL=http://localhost:8000`. The API searches ASF
-metadata only and returns candidate granules plus the sum of reported full-file
-sizes. It does not download or process satellite data.
+set `VITE_SARGUARDIAN_API_URL=http://localhost:8000`. The lightweight archive
+metadata endpoint searches ASF and returns candidate granules plus reported
+full-file sizes. That endpoint alone does not download or process satellite data.
+
+**RiverShift uses a separate processing-job path.** Its authenticated job API
+validates the user-supplied AOI/date request, discovers compatible NISAR GCOV
+acquisitions, and dispatches the RiverShift worker in
+[`moshiour0/SARGuardian-backend`](https://github.com/moshiour0/SARGuardian-backend/tree/main/tools/river_shift).
+The worker downloads and verifies actual GCOV products, performs the documented
+water/land-transition screening, and returns source-linked outputs. The live
+worker requires at least four distinct acquisition dates, at least 90% catalogue
+footprint coverage per selected date, and compatible orbit/frame, product and
+raster support. The request envelope is one single-ring WGS84 Polygon up to
+1,000 km² with a maximum 366-day observation window. These are data/processing
+eligibility gates, not country restrictions.
 
 ## Build
 
@@ -54,23 +70,26 @@ server-side variables in that project only. The included SPA rewrite supports op
 
 ## Included files:
 
-- `src/`: home page, navigation, components, styles, Firebase configuration.
+- `src/`: home page, navigation, workflow cards, styles and Firebase configuration.
+- `src/pages/RiverShiftPage.tsx`: global AOI-driven NISAR GCOV discovery, authenticated job submission, actual-date results, change layers and optional exposure context.
 - `landslide/ui/`: Landslide investigation screen and its styles.
 - `landslide/engine/`: browser-side types, validation, and fixture adapter
   required by that screen.
 - `landslide/fixtures/` and the existing TypeScript tests.
 - Vite, TypeScript, ESLint, package manifest, and dependency lockfile.
 
-The frontend now has two clearly separated actions in the Landslide workspace:
+The two actions described below are specific to the **Landslide workspace**:
 `Check NISAR archive` calls the lightweight metadata preflight API, while
-`Reference demo` still uses the old precomputed fixture and is not live analysis.
-The metadata preflight does not download products or detect movement. The full
-scientific processing pipeline is not connected yet.
+`Reference demo` uses the Landslide page's precomputed fixture and is not live
+analysis. This fixture status does not describe RiverShift. RiverShift is a
+separate, AOI-driven NISAR GCOV processing workflow connected to the authenticated
+job API and backend GitHub Actions worker; its outputs remain research-screening
+candidates until independently reviewed for the selected region and dates.
 
 ## বাংলা নির্দেশনা:
 
 এটি আগের frontend-এর আলাদা কপি। ZIP extract করে এই ফোল্ডারে terminal খুলুন,
 তারপর `npm ci` এবং `npm run dev` চালান। Browser-এ `http://localhost:5173`
 খুললে Home page পাবেন। Google login ও map চালাতে `.env.example` দেখে
-নিজের configuration দিয়ে `.env.local` তৈরি করতে হবে। Landslide-এর ফলাফল
-বর্তমানে demo fixture থেকে আসে, live NISAR analysis থেকে নয়।
+নিজের configuration দিয়ে `.env.local` তৈরি করতে হবে। Landslide-এর `Reference demo` ফলাফল fixture-ভিত্তিক; এটি RiverShift থেকে আলাদা।
+RiverShift authenticated job workflow দিয়ে actual NISAR GCOV data process করে।

@@ -39,9 +39,9 @@ export const engines: Engine[] = [
   {
     id: 'river-shift',
     name: 'River Shift',
-    status: 'SETUP REQUIRED',
-    description: 'Analyze NISAR GCOV observations for water extent, observed-date water change, and persistent erosion/deposition candidates. Results remain provisional until independently validated.',
-    actionLabel: 'Open River Shift engine',
+    status: 'RESEARCH PREVIEW',
+    description: 'Explore eligible river reaches worldwide with NISAR L-band GCOV water-extent and persistent land–water change screening.',
+    actionLabel: 'Explore global river change',
     image: 'https://images.unsplash.com/photo-1437482078695-73f5ca6c96e2?auto=format&fit=crop&w=900&q=88',
     icon: 'river',
   },
